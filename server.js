@@ -163,3 +163,6 @@ http.createServer(async (req, res) => {
   res.writeHead(404); res.end();
 }).listen(PORT, () => { linked.autostart();
   console.log(`http://localhost:${PORT}  (${isLive() ? 'LIVE - إرسال حقيقي' : 'تجريبي - من غير إرسال فعلي'})`); });
+
+// Render free plan sleeps after ~15 min without inbound HTTP; ping our own public URL so sends keep running.
+if (process.env.RENDER_EXTERNAL_URL) setInterval(() => { fetch(process.env.RENDER_EXTERNAL_URL + '/healthz').catch(() => {}); }, 4 * 60 * 1000);
