@@ -6,3 +6,4 @@ usage.json
 link.log
 *.log
 results*.csv
+cloudflared.exe
