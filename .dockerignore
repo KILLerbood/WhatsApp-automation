@@ -1,0 +1,7 @@
+node_modules
+auth
+.env
+config.json
+usage.json
+*.log
+.git

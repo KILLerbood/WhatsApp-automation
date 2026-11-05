@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: whatsapp-automation
+    runtime: node
+    plan: starter            # persistent disk needs a paid plan; free instances sleep and lose the WhatsApp session
+    buildCommand: npm install --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: APP_PASSWORD     # login password for the site (8+ chars) - you type it in Render
+        sync: false
+      - key: DATA_DIR
+        value: /data
+      - key: NODE_VERSION
+        value: "22"
+    disk:
+      name: wa-data
+      mountPath: /data
+      sizeGB: 1
