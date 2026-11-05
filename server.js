@@ -102,12 +102,21 @@ const HOSTED = !!(process.env.RENDER || process.env.RAILWAY_ENVIRONMENT || proce
 if (HOSTED && PASS.length < 8) { console.error('APP_PASSWORD (8+ chars) is required when running online. Refusing to start.'); process.exit(1); }
 const sessions = new Set(), tries = new Map();
 const cookieTok = req => ((req.headers.cookie || '').match(/(?:^|;\s*)wa_s=([a-f0-9]{64})/) || [])[1];
-const authed = req => !PASS || sessions.has(cookieTok(req));
+const bearerTok = req => ((req.headers.authorization || '').match(/^Bearer ([a-f0-9]{64})$/) || [])[1];
+const authed = req => !PASS || sessions.has(cookieTok(req)) || sessions.has(bearerTok(req));
+// Allow the GitHub Pages frontend (or any origin listed in ALLOWED_ORIGINS) to call this server (bridge mode)
+const ORIGINS = (process.env.ALLOWED_ORIGINS || env.ALLOWED_ORIGINS || 'https://killerbood.github.io').split(',').map(x => x.trim()).filter(Boolean);
 const eq = (a, b) => { const x = crypto.createHash('sha256').update(a).digest(), y = crypto.createHash('sha256').update(b).digest(); return crypto.timingSafeEqual(x, y); };
 const LOGIN = fs.readFileSync(path.join(__dirname, 'login.html'));
 
 http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
+  const origin = req.headers.origin;
+  if (origin && ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin); res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type'); res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  }
+  if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   if (url === '/healthz') return json(res, { ok: true });
   if (PASS) {
     if (url === '/login' && req.method === 'GET') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(LOGIN); }
@@ -120,9 +129,9 @@ http.createServer(async (req, res) => {
       tries.delete(ip); const tok = crypto.randomBytes(32).toString('hex'); sessions.add(tok);
       const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
       res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': `wa_s=${tok}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000${secure}` });
-      return res.end('{"ok":true}');
+      return res.end(JSON.stringify({ ok: true, token: tok }));
     }
-    if (url === '/api/logout' && req.method === 'POST') { sessions.delete(cookieTok(req)); res.writeHead(200, { 'Set-Cookie': 'wa_s=; Path=/; Max-Age=0' }); return res.end(); }
+    if (url === '/api/logout' && req.method === 'POST') { sessions.delete(cookieTok(req)); sessions.delete(bearerTok(req)); res.writeHead(200, { 'Set-Cookie': 'wa_s=; Path=/; Max-Age=0' }); return res.end(); }
     if (!authed(req)) {
       if (url.startsWith('/api/')) return json(res, { error: 'سجّل دخول الأول' }, 401);
       res.writeHead(302, { Location: '/login' }); return res.end();

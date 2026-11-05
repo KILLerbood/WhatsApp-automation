@@ -106,7 +106,7 @@ if(!num){bad.push(line.trim());continue}if(seen.has(num)){dup++;continue}seen.ad
 let job=null;const R=(o,c=200)=>Promise.resolve(new Response(JSON.stringify(o),{status:c,headers:{'Content-Type':'application/json'}}));
 const DEMO='دي نسخة عرض على GitHub Pages. الربط والإرسال الحقيقي محتاجين تشغيل السيرفر (على جهازك أو Render).';
 const of=window.fetch.bind(window);
-window.fetch=(u,o={})=>{const p=String(u).split('?')[0];if(!p.startsWith('/api/'))return of(u,o);const b=o.body?JSON.parse(o.body):{};
+const demoFetch=(u,o={})=>{const p=String(u).split('?')[0];const b=o.body?JSON.parse(o.body):{};
 switch(p){case'/api/config':return R({live:false,auth:false});
 case'/api/link/status':return R({state:'none',code:'',number:'',error:'',usedToday:0});
 case'/api/link/start':case'/api/connect':return R({error:DEMO},400);
@@ -119,10 +119,25 @@ const r=job.rows[i];if(r.status=='queued'){r.status='sending';return}r.status=Ma
 case'/api/job':return R(job||{rows:[],done:true});
 case'/api/stop':if(job)job.stop=true;return R({ok:true});
 case'/api/logout':return R({ok:true})}
-return R({error:'not found'},404)}})();
+return R({error:'not found'},404)};
+/* Bridge: if a backend URL is saved (?backend=https://xxxx.trycloudflare.com), call the real server on the user's laptop; otherwise stay in demo mode. */
+const LS=k=>{try{return localStorage.getItem(k)||''}catch{return ''}},SV=(k,v)=>{try{v?localStorage.setItem(k,v):localStorage.removeItem(k)}catch{}};
+const q=new URLSearchParams(location.search);
+if(q.get('backend')){SV('wa_backend',q.get('backend').trim().replace(/\/+$/,''));SV('wa_token','');q.delete('backend');history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:'')+location.hash)}
+const BE=LS('wa_backend');window.WA_BACKEND=BE;
+let lp=null;
+function login(){if(lp)return lp;lp=(async()=>{try{const pw=prompt('اكتب باسورد السيرفر (اللي حطيته في online.bat):');if(!pw)return false;
+const r=await of(BE+'/api/login',{method:'POST',body:JSON.stringify({password:pw})});const j=await r.json().catch(()=>({}));
+if(r.ok&&j.token){SV('wa_token',j.token);return true}alert(j.error||'الباسورد غلط');return false}catch{alert('السيرفر مش متصل. شغّل online.bat على جهازك.');return false}finally{setTimeout(()=>{lp=null},1500)}})();return lp}
+window.fetch=async(u,o={})=>{const p=String(u).split('?')[0];if(!p.startsWith('/api/'))return of(u,o);if(!BE)return demoFetch(u,o);
+const go=()=>of(BE+u,{...o,headers:{...(o.headers||{}),Authorization:'Bearer '+LS('wa_token')}});
+let r;try{r=await go()}catch{return R({error:'السيرفر مش متصل. شغّل online.bat على جهازك.'},503)}
+if(r.status===401&&p!=='/api/login'&&await login())r=await go();return r}})();
 </script></head><body><div id="intro"><div class="ring"></div><div class="core">✦</div><div class="tx">منصة الإرسال الذكي</div></div><canvas id="bg3d"></canvas><main>
-<div class="hero"><div class="brand"><div class="logo">✦</div><div><h1>منصة الإرسال الذكي</h1><p>رسايل واتساب لعملاءك، بهدوء وأمان</p></div></div><div style="display:flex;gap:8px;align-items:center"><span id="mode" class="badge">...</span><button class="s" id="logoutBtn" style="display:none;padding:6px 14px" onclick="fetch('/api/logout',{method:'POST'}).then(()=>location.href='/login')">خروج</button></div></div>
-<div class="demo">✦ نسخة عرض: جرّب التصميم وتنضيف الأرقام والمرفقات وإرسال تجريبي. الإرسال الحقيقي بيشتغل من نسخة السيرفر · <a href="https://github.com/KILLerbood/whatsapp-automation#readme" target="_blank" rel="noopener">طريقة التشغيل</a></div>
+<div class="hero"><div class="brand"><div class="logo">✦</div><div><h1>منصة الإرسال الذكي</h1><p>رسايل واتساب لعملاءك، بهدوء وأمان</p></div></div><div style="display:flex;gap:8px;align-items:center"><span id="mode" class="badge">...</span><button class="s" id="logoutBtn" style="display:none;padding:6px 14px" onclick="fetch('/api/logout',{method:'POST'}).then(()=>{try{localStorage.removeItem('wa_token')}catch(e){}location.reload()})">خروج</button></div></div>
+<div class="demo" id="demoBar">✦ نسخة عرض: جرّب التصميم وتنضيف الأرقام والمرفقات وإرسال تجريبي. الإرسال الحقيقي بيشتغل من نسخة السيرفر · <a href="https://github.com/KILLerbood/whatsapp-automation#readme" target="_blank" rel="noopener">طريقة التشغيل</a></div>
+<script>(function(){var b=window.WA_BACKEND,el=document.getElementById('demoBar');if(!b)return;el.textContent='⏳ بيتصل بالسيرفر على جهازك...';
+fetch(b+'/healthz').then(function(r){if(!r.ok)throw 0;el.textContent='✅ متصل بالسيرفر على جهازك (إرسال حقيقي)';el.style.color='#7ff0a8'}).catch(function(){el.textContent='❌ السيرفر مش متصل. شغّل online.bat على جهازك وافتح اللينك اللي بيطلعلك.';el.style.color='#ff9b9b'})})();</script>
 <div class="stats"><div class="stat gd"><b id="sTotal">0</b><span>إجمالي الأرقام</span></div><div class="stat ok"><b id="sSent">0</b><span>اتبعت</span></div><div class="stat no"><b id="sFail">0</b><span>فشل</span></div><div class="stat"><b id="sLeft">0</b><span>متبقي</span></div></div>
 
 <section id="conn"><h2>1. ربط واتساب</h2>
