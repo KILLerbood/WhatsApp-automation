@@ -71,40 +71,103 @@ async function sendOne(r, o) {
 }
 const MEDIA_OK = /^(image\/(jpeg|png|webp)|application\/pdf|video\/(mp4|quicktime|3gpp|webm))$/;
 // --- free "improve message" (no API key): Pollinations free text endpoint, with a built-in offline formatter as fallback ---
-const AI_SYS = 'You rewrite WhatsApp broadcast messages for a small business. Keep the same language and dialect as the input (if it is Arabic, keep the same Arabic dialect, e.g. Egyptian). Make it clear, friendly and well organised: short lines, a catchy first line, a few fitting emojis (not too many), WhatsApp formatting such as *bold* for key points, and a clear call to action. Keep every placeholder like {name} exactly as written. Never invent facts, prices, dates, links or phone numbers that are not in the input. Reply with the rewritten message only, no explanations.';
+const TRACK = /^(utm_.*|exln|fbclid|igsh|igshid|gclid|gbraid|wbraid|mc_.*|ref|ref_src|ref_url|si|feature|s|fb_.*|_ga|trk|share|__.*)$/i;
+function cleanUrl(u) {
+  let tail = ''; const m = u.match(/[).,،؛!؟?]+$/); if (m) { tail = m[0]; u = u.slice(0, -tail.length); }
+  u = u.replace(/&amp;/g, '&');
+  try {
+    const x = new URL(u); if (!/^https?:$/.test(x.protocol)) return u + tail;
+    let host = x.hostname.replace(/^(www|m|mobile|web)\./i, '');
+    const keep = [...x.searchParams].filter(([k]) => !TRACK.test(k));
+    let p = x.pathname.replace(/\/+$/, '');
+    if (/(^|\.)facebook\.com$/i.test(host) && keep.length && /profile\.php/i.test(p)) { /* keep ?id= for numeric profiles */ }
+    else if (!/(^|\.)(youtube\.com|youtu\.be)$/i.test(host)) { /* drop all remaining params for social profile links */ if (/(instagram|facebook|fb|tiktok|twitter|x|linkedin|snapchat|t)\.(com|me)$/i.test(host)) keep.length = 0; }
+    if (/(^|\.)instagram\.com$/i.test(host)) host = 'instagram.com';
+    const q = keep.length ? '?' + keep.map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&') : '';
+    return 'https://' + host + p + q + tail;
+  } catch { return u + tail; }
+}
+// WhatsApp-safe output: single *bold*, no markdown links/headers, tracking-free short URLs
+function cleanWA(t) {
+  t = String(t).replace(/\r/g, '').replace(/```[a-z]*\n?|```/g, '');
+  t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, label, url) => { const c = cleanUrl(url); const l = label.trim(); return l && l !== url && !/^https?:\/\//i.test(l) ? l + ': ' + c : c; });
+  t = t.replace(/\*\*([^*\n]+)\*\*/g, '*$1*').replace(/__([^_\n]+)__/g, '_$1_').replace(/^#{1,6}\s+/gm, '').replace(/~~([^~\n]+)~~/g, '~$1~');
+  t = t.replace(/https?:\/\/[^\s<>"']+/g, u => cleanUrl(u));
+  return t.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+const AI_SYS = `You rewrite WhatsApp broadcast messages for a small business.
+RULES
+- Keep the SAME language and dialect as the input (Arabic stays Arabic, same dialect, e.g. Egyptian). Fix typos and grammar.
+- Keep every number, price, date, phone number and every placeholder like {name} EXACTLY as written. Never invent facts, prices, offers, dates, names or links.
+- Structure: a catchy first line with ONE bold title, then short lines (one idea per line), a blank line before the call to action, then contact details and links last.
+- Emojis: put an emoji at the start of a line ONLY if it clearly matches that exact line's meaning (blood/sugar test = 🩸, heart/liver/kidney/thyroid = 🫀, vitamins/minerals/medicine = 💊, enzymes/heart health = ❤, lab/tests = 🧪, home visit = 🏠, time/result speed = ⏱, phone = 📞, Instagram = 📸, location = 📍, price = 💰, discount/offer = 🔥, delivery = 🚚). If no emoji fits a line, use none. NEVER use unrelated decorative emojis (no leaves, trees, flowers, stars unless the text is about them).
+- WhatsApp formatting ONLY: *bold* with ONE asterisk on each side, _italic_. NEVER use **double asterisks**, markdown headers (#) or markdown links [text](url).
+- Links: output plain short URLs with no tracking parameters (remove utm_*, exln, fbclid, igsh, etc.). Instagram links look like https://instagram.com/username. Put a short label before each link, e.g. "📸 تابعونا على إنستغرام: https://instagram.com/username". Do the same for Facebook, TikTok and any other link.
+- Reply with the finished message only, no explanations and no quotes.
+
+EXAMPLE INPUT:
+صحتك تستاهل متابعة أشمل! مع فحوصات الباقات الشاملة من مختبر نور الثريا تقدر تطمئن على أهم مؤشرات جسمك: صورة الدم والسكر، وظائف الكبد والكلى والغدة الدرقية، الدهون والفيتامينات والمعادن، إنزيمات البنكرياس والقلب والعضلات. النتيجة خلال 24 ساعة. متوفر زيارة منزلية. للاستفسار 55523427 – 55959523 تابعونا على إنستغرام [نور الثريا](https://www.instagram.com/noor_althuraya_laboratory?exln=MWNnc3IxY2RmZDd0MQ%3D%3D&utm_source=qr)
+
+EXAMPLE OUTPUT:
+🧪 *صحتك تستاهل متابعة أشمل!*
+
+مع فحوصات *الباقات الشاملة* من مختبر نور الثريا تقدر تطمئن على أهم مؤشرات جسمك:
+
+🩸 صورة الدم والسكر
+🫀 وظائف الكبد والكلى والغدة الدرقية
+💊 الدهون والفيتامينات والمعادن
+❤ إنزيمات البنكرياس والقلب والعضلات
+
+⏱ *النتيجة خلال 24 ساعة*
+🏠 *متوفر زيارة منزلية*
+
+📞 *للحجز والاستفسار:* 55523427 – 55959523
+
+📸 تابعونا على إنستغرام: https://instagram.com/noor_althuraya_laboratory`;
+const digitsOf = t => (String(t).match(/\d{3,}/g) || []).map(x => x.replace(/\D/g, ''));
 async function aiRemote(text) {
-  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 25000);
+  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 30000);
   try {
     const r = await fetch('https://text.pollinations.ai/openai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctl.signal,
-      body: JSON.stringify({ model: 'openai', temperature: 0.7, messages: [{ role: 'system', content: AI_SYS }, { role: 'user', content: text }] }) });
+      body: JSON.stringify({ model: 'openai', temperature: 0.5, messages: [{ role: 'system', content: AI_SYS }, { role: 'user', content: text }] }) });
     if (!r.ok) return null;
     const j = await r.json().catch(() => null);
-    const out = String(j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content || '').trim();
-    const ph = text.match(/\{name\}/g) || [];
-    if (!out || out.length > 3500 || (out.match(/\{name\}/g) || []).length < ph.length || /^\s*\{?"?(error|detail)/i.test(out)) return null;
+    const raw = String(j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content || '').trim();
+    if (!raw || raw.length > 3500 || /^\s*\{?"?(error|detail)/i.test(raw)) return null;
+    const out = cleanWA(raw);
+    if ((out.match(/\{name\}/g) || []).length < (text.match(/\{name\}/g) || []).length) return null;
+    // every number from the input must survive the rewrite
+    for (const d of digitsOf(text)) if (!out.replace(/[^\d]/g, '').includes(d)) return null;
     return out;
-  } catch { return null; } finally { clearTimeout(t); }
+  } catch { return null; } finally { clearTimeout(tm); }
 }
-// offline formatter: greeting line, bold title, one bullet per sentence with a fitting emoji, call-to-action line
+// offline formatter: greeting line, bold title, one bullet per sentence with a fitting emoji, call-to-action line, clean labelled links
 function aiLocal(text) {
-  const ico = [[/خصم|عرض|تخفيض|offer|sale|discount/i, '🔥'], [/شقة|شقق|عقار|فيلا|وحدة|سكن|apartment|property/i, '🏠'], [/سعر|جنيه|ريال|دينار|درهم|دولار|price|\$/i, '💰'], [/موعد|تاريخ|يوم|الشهر|أسبوع|ساعة|date|today|tomorrow/i, '📅'],
-    [/جديد|وصل|إطلاق|new|launch/i, '✨'], [/توصيل|شحن|delivery|shipping/i, '🚚'], [/ضمان|جودة|warranty|quality/i, '✅'], [/كلمنا|كلمنى|اتصل|تواصل|واتساب|رد |call|contact|reply/i, '📞']];
-  const pick = s => { for (const [re, e] of ico) if (re.test(s)) return e; return '▪️'; };
+  const links = []; let src = cleanWA(text).replace(/https?:\/\/[^\s<>"']+/g, u => { links.push(u); return '\u0001' + (links.length - 1) + '\u0001'; });
+  const ico = [[/دم|سكر/, '🩸'], [/إنزيم|انزيم/, '❤'], [/كبد|كلى|كلية|غدة|قلب|ضغط/, '🫀'], [/فيتامين|معادن|دهون|دواء|علاج|صيدلية/, '💊'], [/فحص|فحوصات|تحليل|تحاليل|مختبر|معمل|lab/i, '🧪'],
+    [/زيارة منزلية|منزل|home/i, '🏠'], [/نتيجة|ساعة|سريع|result|hours/i, '⏱'], [/خصم|عرض|تخفيض|offer|sale|discount/i, '🔥'], [/شقة|شقق|عقار|فيلا|وحدة|سكن|apartment|property/i, '🏘'],
+    [/سعر|جنيه|ريال|دينار|درهم|دولار|price|\$/i, '💰'], [/موعد|تاريخ|يوم|الشهر|أسبوع|date|tomorrow|today/i, '📅'], [/جديد|وصل|إطلاق|new|launch/i, '✨'], [/توصيل|شحن|delivery|shipping/i, '🚚'],
+    [/ضمان|جودة|warranty|quality/i, '✅'], [/موقع|عنوان|فرع|location|address/i, '📍']];
+  const pick = (s, d = '') => { for (const [re, e] of ico) if (re.test(s)) return e + ' '; return d; };
   const bold = s => s.replace(/(\d+(?:[.,]\d+)?\s?%|\d[\d,.]*\s?(?:جنيه|ريال|دينار|درهم|دولار|EGP|SAR|KWD|AED|USD))/g, '*$1*');
-  let parts = String(text).replace(/\r/g, '').split(/\n+|(?<=[.!؟?!۔])\s+/).map(x => x.trim()).filter(Boolean);
+  const phone = /(كلمنا|كلمنى|اتصل|تواصل|استفسار|حجز|واتساب|call|contact|reply|book)/i;
+  let parts = src.split(/\n+|(?<=[.!؟?!۔])\s+/).map(x => x.trim()).filter(Boolean);
   if (!parts.length) return text;
-  const lines = []; const greet = /^(السلام عليكم|سلام عليكم|مرحبا|مرحباً|أهلا|أهلاً|اهلا|هاي|hello|hi)\b/i;
-  if (greet.test(parts[0]) && parts.length > 1) lines.push('👋 ' + parts.shift().replace(/[.،,]+$/, '') + '\n');
-  const cta = /(كلمنا|كلمنى|اتصل|تواصل|رد علينا|ابعت|احجز|سجل|call|contact|reply|book)/i;
-  let ctaLine = null; if (parts.length > 1 && cta.test(parts[parts.length - 1])) ctaLine = parts.pop();
-  const first = parts.shift();
-  lines.push(pick(first) + ' *' + first.replace(/[.!؟?]+$/, '') + '*');
-  if (parts.length) lines.push('');
-  for (const p of parts) lines.push(pick(p) + ' ' + bold(p.replace(/[.،,]+$/, '')));
-  if (ctaLine) lines.push('', '👇 ' + bold(ctaLine.replace(/[.،,]+$/, '')));
-  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  const head = [], body = [], tail = [];
+  const greet = /^(السلام عليكم|سلام عليكم|مرحبا|مرحباً|أهلا|أهلاً|اهلا|هاي|hello|hi)\b/i;
+  if (greet.test(parts[0]) && parts.length > 1) head.push('👋 ' + parts.shift().replace(/[.،,]+$/, ''));
+  let first = parts.shift(); const fl = first.replace(/[.!؟?]+$/, '');
+  head.push((pick(fl, '✨ ')) + '*' + fl + '*');
+  for (const p of parts) {
+    const lk = p.match(/^(.*?)\u0001(\d+)\u0001\s*$/);
+    if (lk && !/[.!؟?]\s/.test(lk[1])) { const u = links[+lk[2]], lab = /instagram\.com/i.test(u) ? '📸 تابعونا على إنستغرام' : /facebook\.com|fb\.com/i.test(u) ? '👍 تابعونا على فيسبوك' : /tiktok\.com/i.test(u) ? '🎵 تابعونا على تيك توك' : '🔗 ' + (lk[1].replace(/[:：\-–]+\s*$/, '').trim() || 'الرابط'); tail.push(lab + ': ' + u); continue; }
+    if (phone.test(p)) { tail.unshift('📞 ' + bold(p.replace(/[.،,]+$/, ''))); continue; }
+    body.push(pick(p, '▪️ ') + bold(p.replace(/[.،,]+$/, '')));
+  }
+  let out = head.join('\n') + (body.length ? '\n\n' + body.join('\n') : '') + (tail.length ? '\n\n' + tail.join('\n') : '');
+  return cleanWA(out.replace(/\u0001(\d+)\u0001/g, (_, i) => links[+i]));
 }
-async function aiImprove(text) { const r = await aiRemote(text); return r ? { text: r, mode: 'ai' } : { text: aiLocal(text), mode: 'offline' }; }
+async function aiImprove(text) { text = cleanWA(text); const r = await aiRemote(text); return r ? { text: r, mode: 'ai' } : { text: aiLocal(text), mode: 'offline' }; }
 const rnd = (a, b) => (a + Math.random() * (b - a)) * 1000;
 async function run(j, o) {
   let sinceBatch = 0;
