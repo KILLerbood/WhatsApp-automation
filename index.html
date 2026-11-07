@@ -155,7 +155,7 @@ tbody tr{animation:fadeUp .4s both}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 let rows=[],poll,last=[],lpoll,atts=[];
-let blks=[],aiPrev=null;
+let blks=[],aiOrig=null,aiN=0,aiSet=null;
 const BACC='image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/quicktime,video/3gpp,video/webm',BOK=/^(image\/(jpeg|png|webp)|application\/pdf|video\/(mp4|quicktime|3gpp|webm))$/;
 function addBlk(k){if(blks.length>=10)return alert('الحد 10 أجزاء');blks.push({kind:k,text:'',file:null});drawBlk()}
 function blkPayload(){return blks.map(b=>({kind:b.kind,text:b.text,...(b.file||{})}))}
@@ -166,10 +166,11 @@ h.append(t,mk('↑',()=>{[blks[i-1],blks[i]]=[blks[i],blks[i-1]];drawBlk()},i==0
 if(b.kind=='media'){const f=document.createElement('input');f.type='file';f.accept=BACC;f.style.marginTop='8px';f.onchange=async()=>{const x=f.files[0];if(!x)return;if(!BOK.test(x.type))return alert('نوع الملف مش مدعوم');if(x.size>(x.type.startsWith('video/')?50e6:16e6))return alert('الملف كبير (الحد 16 ميجا للصور وPDF، و50 ميجا للفيديو)');b.file={name:x.name,mime:x.type,size:x.size,data:await rd(x)};drawBlk()};
 if(b.file){const p=document.createElement('p');p.className='m';p.textContent='✅ '+b.file.name+' ('+Math.max(1,Math.round(b.file.size/1e3))+' KB). اختار ملف تاني لو عايز تغيّره.';d.append(p)}d.append(f)}
 const ta=document.createElement('textarea');ta.style.cssText='min-height:70px;margin-top:8px';ta.placeholder=b.kind=='text'?'اكتب النص هنا...':'تعليق على الملف (اختياري)';ta.value=b.text;ta.oninput=()=>{b.text=ta.value};d.append(ta);return d}))}
-async function aiImprove(){const v=$('text').value.trim();if(!v)return alert('اكتب نص الأول وبعدين دوس تحسين');const bt=$('aiBtn');bt.disabled=true;$('aiMsg').textContent='بيحسّن الرسالة...';
-try{const r=await fetch('/api/ai/improve',{method:'POST',body:JSON.stringify({text:v})});const j=await r.json();if(!r.ok){$('aiMsg').textContent=j.error||'حصل خطأ';bt.disabled=false;return}
-aiPrev=v;$('text').value=j.text;$('aiUndo').style.display='';$('aiMsg').textContent=j.mode=='ai'?'تمام! اتحسّنت بالذكاء الاصطناعي. راجع النص قبل الإرسال.':'الذكاء الاصطناعي مش متاح دلوقتي، فاتنسّقت بالتنسيق التلقائي (إيموجي وعنوان ونقط). راجع النص قبل الإرسال.'}catch(e){$('aiMsg').textContent='حصل خطأ: '+e.message}bt.disabled=false}
-function aiUndo(){if(aiPrev!=null){$('text').value=aiPrev;$('aiUndo').style.display='none'}}
+async function aiImprove(){const cur=$('text').value.trim();if(!cur)return alert('اكتب نص الأول وبعدين دوس تحسين');
+if(aiOrig===null||cur!==aiSet){aiOrig=cur;aiN=0}const v=aiOrig;const bt=$('aiBtn');bt.disabled=true;$('aiMsg').textContent='بيحسّن الرسالة...';
+try{const r=await fetch('/api/ai/improve',{method:'POST',body:JSON.stringify({text:v,seed:aiN})});const j=await r.json();if(!r.ok){$('aiMsg').textContent=j.error||'حصل خطأ';bt.disabled=false;return}
+aiN++;aiSet=j.text;$('text').value=j.text;$('aiUndo').style.display='';$('aiMsg').textContent=j.mode=='ai'?'تمام! اتحسّنت بالذكاء الاصطناعي. راجع النص قبل الإرسال.':'الذكاء الاصطناعي مش متاح دلوقتي، فاتنسّقت بالتنسيق التلقائي (إيموجي وعنوان ونقط). راجع النص قبل الإرسال.'}catch(e){$('aiMsg').textContent='حصل خطأ: '+e.message}bt.disabled=false}
+function aiUndo(){if(aiOrig!=null){$('text').value=aiOrig;aiSet=null;aiOrig=null;aiN=0;$('aiUndo').style.display='none'}}
 
 const cur={};function count(id,v){const el=document.getElementById(id),from=cur[id]||0;cur[id]=v;if(from===v){el.textContent=v;return}const t0=performance.now();(function f(t){const p=Math.min(1,(t-t0)/600),e=1-Math.pow(1-p,3);el.textContent=Math.round(from+(v-from)*e);if(p<1)requestAnimationFrame(f)})(t0)}
 function setStats(l){const s=l.filter(r=>r.status=='sent').length,f=l.filter(r=>r.status=='failed').length;count('sTotal',l.length);count('sSent',s);count('sFail',f);count('sLeft',l.filter(r=>r.status=='queued'||r.status=='sending').length)}

@@ -93,6 +93,7 @@ function cleanWA(t) {
   t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, label, url) => { const c = cleanUrl(url); const l = label.trim(); return l && l !== url && !/^https?:\/\//i.test(l) ? l + ': ' + c : c; });
   t = t.replace(/\*\*([^*\n]+)\*\*/g, '*$1*').replace(/__([^_\n]+)__/g, '_$1_').replace(/^#{1,6}\s+/gm, '').replace(/~~([^~\n]+)~~/g, '~$1~');
   t = t.replace(/https?:\/\/[^\s<>"']+/g, u => cleanUrl(u));
+  t = t.replace(/\*{2,}/g, '*').replace(/\*\s*\*/g, '').replace(/([\p{Extended_Pictographic}\p{Regional_Indicator}]\uFE0F?)(?:\s*\1)+/gu, '$1');
   return t.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 const AI_SYS = `You rewrite WhatsApp broadcast messages for a small business.
@@ -126,12 +127,13 @@ EXAMPLE OUTPUT:
 📸 تابعونا على إنستغرام: https://instagram.com/noor_althuraya_laboratory`;
 const digitsOf = t => (String(t).match(/\d{3,}/g) || []).map(x => x.replace(/\D/g, ''));
 let aiWhy = '';
-async function aiRemote(text) {
+const STYLES = ['bullet list: one fitting emoji at the start of each line', 'sections separated by a divider line ━━━━━━━━━━━━, short paragraphs', 'checklist style using ✅ and ▫️ bullets', 'headline then numbered points using 1️⃣ 2️⃣ 3️⃣', 'compact style: emoji headline, one-line intro, items joined with ➜ arrows'];
+async function aiRemote(text, seed = 0) {
   aiWhy = '';
   const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 30000);
   try {
     const r = await fetch('https://text.pollinations.ai/openai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctl.signal,
-      body: JSON.stringify({ model: 'openai', temperature: 0.5, messages: [{ role: 'system', content: AI_SYS }, { role: 'user', content: text }] }) });
+      body: JSON.stringify({ model: 'openai', temperature: seed ? 0.9 : 0.5, seed: 1000 + seed, messages: [{ role: 'system', content: AI_SYS }, { role: 'user', content: text + (seed ? '\n\n[Rewrite attempt #' + seed + '. Use a DIFFERENT layout and different (still fitting) emojis than a typical first answer. Layout for this attempt: ' + STYLES[seed % STYLES.length] + '. Do not mention this note.]' : '') }] }) });
     if (!r.ok) { aiWhy = 'http ' + r.status; return null; }
     const j = await r.json().catch(() => null);
     const raw = String(j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content || '').trim();
@@ -143,38 +145,55 @@ async function aiRemote(text) {
     return out;
   } catch (e) { aiWhy = 'error: ' + e.message; return null; } finally { clearTimeout(tm); }
 }
-// offline formatter: keeps the user's own line order, adds an emoji only where a line has none, bolds the title, labels links
-function aiLocal(text) {
+// offline formatter: parses the message into title / items / call-to-action / links, then renders it in one of several styles (seed rotates style + emojis)
+const ICO = [[/إنزيم|انزيم/, ['❤', '🧬', '⚕️']], [/دم|سكر/, ['🩸', '💧', '🔬']], [/كبد|كلى|كلية|غدة|قلب|ضغط/, ['🫀', '🩺', '🏥']], [/فيتامين|معادن|دهون|دواء|علاج|صيدلية/, ['💊', '🥗', '⚕️']],
+  [/فحص|فحوصات|تحليل|تحاليل|مختبر|معمل|lab/i, ['🧪', '🔬', '🏥']], [/زيارة منزلية|home visit/i, ['🏠', '🚗', '🏡']], [/نتيجة|ساعة|سريع|result|hours/i, ['⏱', '⚡', '🕐']],
+  [/خصم|عرض|تخفيض|offer|sale|discount/i, ['🔥', '🎁', '💥']], [/شقة|شقق|عقار|فيلا|وحدة|سكن|apartment|property/i, ['🏘', '🏠', '🔑']], [/سعر|جنيه|ريال|دينار|درهم|دولار|price|\$/i, ['💰', '💵', '🏷']],
+  [/موعد|تاريخ|الشهر|أسبوع|date|tomorrow|today/i, ['📅', '🗓', '⏰']], [/توصيل|شحن|delivery|shipping/i, ['🚚', '📦', '🛵']], [/ضمان|جودة|warranty|quality/i, ['✅', '🛡', '⭐']],
+  [/موقع|عنوان|فرع|location|address/i, ['📍', '🗺', '📌']], [/كلمنا|كلمنى|اتصل|تواصل|استفسار|حجز|واتساب|call|contact|reply|book/i, ['📞', '☎️', '📲']], [/جديد|وصل|إطلاق|new|launch/i, ['✨', '🆕', '🌟']]];
+const TITLE_E = ['✨', '📢', '🌟', '🎯', '💫'];
+function aiLocal(text, seed = 0) {
+  const a = Math.abs(seed | 0), style = a % 5, alt = a % 3;
   const links = []; const src = cleanWA(text).replace(/https?:\/\/[^\s<>"']+/g, u => { links.push(u); return '\u0001' + (links.length - 1) + '\u0001'; });
-  const EM = /^[\s]*[\p{Extended_Pictographic}\p{Regional_Indicator}]/u, LEAD = /^((?:[\p{Extended_Pictographic}\p{Regional_Indicator}️‍\s])+)(.*)$/u;
-  const ico = [[/إنزيم|انزيم/, '❤'], [/دم|سكر/, '🩸'], [/كبد|كلى|كلية|غدة|قلب|ضغط/, '🫀'], [/فيتامين|معادن|دهون|دواء|علاج|صيدلية/, '💊'], [/فحص|فحوصات|تحليل|تحاليل|مختبر|معمل|lab/i, '🧪'],
-    [/زيارة منزلية|home/i, '🏠'], [/نتيجة|ساعة|سريع|result|hours/i, '⏱'], [/خصم|عرض|تخفيض|offer|sale|discount/i, '🔥'], [/شقة|شقق|عقار|فيلا|وحدة|سكن|apartment|property/i, '🏘'],
-    [/سعر|جنيه|ريال|دينار|درهم|دولار|price|\$/i, '💰'], [/موعد|تاريخ|الشهر|أسبوع|date|tomorrow|today/i, '📅'], [/توصيل|شحن|delivery|shipping/i, '🚚'], [/ضمان|جودة|warranty|quality/i, '✅'],
-    [/موقع|عنوان|فرع|location|address/i, '📍'], [/كلمنا|كلمنى|اتصل|تواصل|استفسار|حجز|واتساب|call|contact|reply|book/i, '📞'], [/جديد|وصل|إطلاق|new|launch/i, '✨']];
-  const pick = s => { for (const [re, e] of ico) if (re.test(s)) return e + ' '; return ''; };
+  const EM = /^\s*[\p{Extended_Pictographic}\p{Regional_Indicator}]/u, LEAD = /^((?:[\p{Extended_Pictographic}\p{Regional_Indicator}️‍\s])+)(.*)$/u;
+  const pick = s => { for (const [re, l] of ICO) if (re.test(s)) return l[alt % l.length]; return ''; };
   const bold = s => s.includes('*') ? s : s.replace(/(\d+(?:[.,]\d+)?\s?%|\d[\d,.]*\s?(?:جنيه|ريال|دينار|درهم|دولار|EGP|SAR|KWD|AED|USD))/g, '*$1*');
-  const label = u => /instagram\.com/i.test(u) ? '📸 تابعونا على إنستغرام' : /facebook\.com|fb\.com/i.test(u) ? '👍 تابعونا على فيسبوك' : /tiktok\.com/i.test(u) ? '🎵 تابعونا على تيك توك' : /youtube\.com|youtu\.be/i.test(u) ? '▶️ شاهدونا على يوتيوب' : /wa\.me|whatsapp\.com/i.test(u) ? '💬 كلمنا على واتساب' : '🔗 الرابط';
-  const urlOnly = l => /^\u0001\d+\u0001$/.test(l);
+  const label = u => /instagram\.com/i.test(u) ? ['📸', 'تابعونا على إنستغرام'] : /facebook\.com|fb\.com/i.test(u) ? ['👍', 'تابعونا على فيسبوك'] : /tiktok\.com/i.test(u) ? ['🎵', 'تابعونا على تيك توك'] : /youtube\.com|youtu\.be/i.test(u) ? ['▶️', 'شاهدونا على يوتيوب'] : /wa\.me|whatsapp\.com/i.test(u) ? ['💬', 'كلمنا على واتساب'] : ['🔗', 'الرابط'];
+  const urlOnly = l => /^\u0001\d+\u0001$/.test(l), uOf = l => links[+l.match(/\d+/)[0]];
+  const strip = l => { const m = l.match(LEAD); return m ? m[2] : l; };
   let lines = src.split('\n').map(x => x.trim()).flatMap(l => (!EM.test(l) && l.length > 70) ? l.split(/(?<=[.!؟?۔])\s+/).filter(Boolean).map(t => ({ t, split: true })) : [{ t: l, split: false }]);
-  const greet = /^(السلام عليكم|سلام عليكم|مرحبا|مرحباً|أهلا|أهلاً|اهلا|هاي|hello|hi)(?=[\s،,!.]|$)/i, out = []; let titled = false;
+  const greet = /^(السلام عليكم|سلام عليكم|مرحبا|مرحباً|أهلا|أهلاً|اهلا|هاي|hello|hi)(?=[\s،,!.]|$)/i, phoneW = /كلمنا|كلمنى|اتصل|تواصل|استفسار|حجز|واتساب|call|contact|reply|book/i;
+  const M = []; let titled = false;   // M: {k:kind, t:text}
   for (let k = 0; k < lines.length; k++) {
-    let { t: l, split } = lines[k]; if (!l) { if (out.length && out[out.length - 1] !== '') out.push(''); continue; }
-    const lab2 = l.match(/^[^:：\u0001]{1,40}[:：]\s*(\u0001\d+\u0001)$/);
-    if (lab2 && out.length && /[:：]$/.test(out[out.length - 1])) { const prev = out.pop(), u = links[+lab2[1].match(/\d+/)[0]]; out.push((EM.test(prev) ? '' : label(u).split(' ')[0] + ' ') + prev + ' ' + u); continue; }
-    if (urlOnly(l)) { out.push(label(links[+l.match(/\d+/)[0]]) + ': ' + l); continue; }
-    if (/[:：]$/.test(l) && lines[k + 1] && urlOnly(lines[k + 1].t)) { const u = lines[++k].t; out.push((EM.test(l) ? '' : label(links[+u.match(/\d+/)[0]]).split(' ')[0] + ' ') + l + ' ' + u); continue; }
-    if (/^[\d\s+\-–—()]+$/.test(l)) { out.push(l); continue; } // phone-number-only line stays as is
-    if (!titled && greet.test(l) && lines.slice(k + 1).some(x => x.t)) { out.push((EM.test(l) ? '' : '👋 ') + l.replace(/[.،,]+$/, '')); continue; }
-    if (!titled) { titled = true; const m = l.match(LEAD); let e = m ? m[1] : pick(l) || '✨ ', rest = m ? m[2] : l;
-      if (!/\*[^*]+\*/.test(rest) && !/\*/.test(rest)) rest = '*' + rest.replace(/[.!؟?]+$/, '') + '*'; out.push(e.trimEnd() + ' ' + rest); continue; }
-    if (!EM.test(l)) l = (pick(l) || (split ? '▪️ ' : '')) + l;
-    else { const m2 = l.match(LEAD), want = pick(m2 ? m2[2] : l); if (m2 && want && m2[1].trim() !== want.trim()) l = want + m2[2]; } // swap an irrelevant leading emoji for a fitting one
-    out.push(bold(l.replace(/[.،,]+$/, '')));
+    const { t: l, split } = lines[k]; if (!l) { M.push({ k: 'gap' }); continue; }
+    const lab2 = l.match(/^[^:：\u0001]{1,40}[:：]\s*(\u0001\d+\u0001)$/), prev = M[M.length - 1];
+    if (lab2 && prev && /[:：]$/.test(prev.t || '') && (prev.k === 'item' || prev.k === 'cta' || prev.k === 'intro')) { M.pop(); M.push({ k: 'link', t: strip(prev.t).replace(/[:：]\s*$/, ''), u: uOf(lab2[1]) }); continue; }
+    if (urlOnly(l)) { M.push({ k: 'link', t: '', u: uOf(l) }); continue; }
+    if (/[:：]$/.test(l) && lines[k + 1] && urlOnly(lines[k + 1].t)) { M.push({ k: 'link', t: strip(l).replace(/[:：]\s*$/, ''), u: uOf(lines[++k].t) }); continue; }
+    if (/^[\d\s+\-–—()]+$/.test(l)) { M.push({ k: 'phone', t: l }); continue; }
+    if (!titled && greet.test(l) && lines.slice(k + 1).some(x => x.t)) { M.push({ k: 'greet', t: strip(l).replace(/[.،,]+$/, '') }); continue; }
+    if (!titled) { titled = true; M.push({ k: 'title', t: strip(l).replace(/[*]/g, '').replace(/[.!؟?]+$/, '').trim() }); continue; }
+    const body = strip(l); M.push({ k: phoneW.test(body) && body.length < 60 ? 'cta' : /[:：]$/.test(body) ? 'intro' : 'item', t: body.replace(/[.،,]+$/, ''), split });
+  }
+  const DIV = '━━━━━━━━━━━━', out = [], bullet = ['', '', '', '➤ ', ''][style];
+  for (let k = 0; k < M.length; k++) {
+    const m = M[k], nxt = M[k + 1];
+    if (m.k === 'gap') { if (out.length && out[out.length - 1] !== '') out.push(''); continue; }
+    if (m.k === 'greet') out.push('👋 ' + m.t);
+    else if (m.k === 'title') {
+      const e = pick(m.t) || TITLE_E[a % TITLE_E.length], t = '*' + m.t + '*';
+      out.push(style === 4 ? '🔹 ' + t + ' 🔹' : e + ' ' + t); if (style === 1) out.push(DIV); if (style === 2) out.push('👇');
+      if (nxt && nxt.k !== 'gap' && style !== 1 && style !== 2) out.push('');
+    } else if (m.k === 'intro') out.push(bold(m.t));
+    else if (m.k === 'item') { const e = pick(m.t) || (m.split ? '▪️' : ''); out.push(bullet + (e ? e + ' ' : '') + bold(m.t)); }
+    else if (m.k === 'cta') { if (style === 1 && out[out.length - 1] !== DIV) { if (out[out.length - 1] !== '') out.push(''); out.push(DIV); } out.push((pick(m.t) || '📞') + ' ' + bold(m.t)); }
+    else if (m.k === 'phone') out.push((style === 3 ? '➤ ' : '') + m.t);
+    else if (m.k === 'link') { const [e, lb] = label(m.u); out.push(e + ' ' + (m.t || lb) + ': ' + m.u); }
   }
   const seen = new Set(); const res = out.filter(x => x === '' || !seen.has(x) && seen.add(x));
   return cleanWA(res.join('\n').replace(/\u0001(\d+)\u0001/g, (_, i) => links[+i]));
 }
-async function aiImprove(text) { text = cleanWA(text); const r = await aiRemote(text); if (!r) console.log('improve: fallback (' + aiWhy + ')'); return r ? { text: r, mode: 'ai' } : { text: aiLocal(text), mode: 'offline', why: aiWhy }; }
+async function aiImprove(text, seed = 0) { text = cleanWA(text); const r = await aiRemote(text, seed); if (!r) console.log('improve: fallback (' + aiWhy + ')'); return r ? { text: r, mode: 'ai' } : { text: aiLocal(text, seed), mode: 'offline', why: aiWhy }; }
 const rnd = (a, b) => (a + Math.random() * (b - a)) * 1000;
 async function run(j, o) {
   let sinceBatch = 0;
@@ -279,7 +298,7 @@ http.createServer(async (req, res) => {
   if (req.url === '/api/ai/improve' && req.method === 'POST') {
     const b = await readBody(req); const text = String(b.text || '').trim().slice(0, 3000);
     if (!text) return json(res, { error: 'اكتب نص الأول' }, 400);
-    return json(res, await aiImprove(text));
+    return json(res, await aiImprove(text, Math.max(0, Math.min(1000, parseInt(b.seed, 10) || 0))));
   }
   if (req.url === '/api/link/status') return json(res, linked.status());
   if (req.url === '/api/link/start' && req.method === 'POST') { const b = await readBody(req); let ph = String(b.phone || '').replace(/\D/g, '').replace(/^00/, ''); if (/^[569]\d{7}$/.test(ph)) ph = '965' + ph; if (/^01[0125]\d{8}$/.test(ph)) ph = '20' + ph.slice(1); if (ph.length < 8) return json(res, { error: 'اكتب رقمك بالكود الدولي، مثلاً 96566012345' }, 400); linked.start(ph); return json(res, { ok: true }); }
