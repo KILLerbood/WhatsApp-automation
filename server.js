@@ -70,19 +70,41 @@ async function sendOne(r, o) {
   return first;
 }
 const MEDIA_OK = /^(image\/(jpeg|png|webp)|application\/pdf|video\/(mp4|quicktime|3gpp|webm))$/;
-// --- free AI "improve message" (Google Gemini free tier; key saved in DATA_DIR/ai.json or GEMINI_API_KEY) ---
-const AIF = path.join(DATA, 'ai.json'), AI_MODEL = process.env.GEMINI_MODEL || env.GEMINI_MODEL || 'gemini-flash-latest';
-const aiKey = () => { try { return JSON.parse(fs.readFileSync(AIF, 'utf8')).key || ''; } catch { return process.env.GEMINI_API_KEY || env.GEMINI_API_KEY || ''; } };
+// --- free "improve message" (no API key): Pollinations free text endpoint, with a built-in offline formatter as fallback ---
 const AI_SYS = 'You rewrite WhatsApp broadcast messages for a small business. Keep the same language and dialect as the input (if it is Arabic, keep the same Arabic dialect, e.g. Egyptian). Make it clear, friendly and well organised: short lines, a catchy first line, a few fitting emojis (not too many), WhatsApp formatting such as *bold* for key points, and a clear call to action. Keep every placeholder like {name} exactly as written. Never invent facts, prices, dates, links or phone numbers that are not in the input. Reply with the rewritten message only, no explanations.';
-async function aiImprove(text) {
-  const key = aiKey(); if (!key) { const e = new Error('محتاج مفتاح Gemini المجاني الأول (دوس على زرار المفتاح)'); e.needKey = true; throw e; }
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${AI_MODEL}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-    body: JSON.stringify({ systemInstruction: { parts: [{ text: AI_SYS }] }, contents: [{ role: 'user', parts: [{ text }] }], generationConfig: { temperature: 0.7 } }) });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error((j.error && j.error.message) || ('خطأ من Gemini ' + r.status));
-  const out = ((((j.candidates || [])[0] || {}).content || {}).parts || []).map(p => p.text || '').join('').trim();
-  if (!out) throw new Error('الذكاء الاصطناعي مرجّعش رد، جرّب تاني'); return out;
+async function aiRemote(text) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 25000);
+  try {
+    const r = await fetch('https://text.pollinations.ai/openai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctl.signal,
+      body: JSON.stringify({ model: 'openai', temperature: 0.7, messages: [{ role: 'system', content: AI_SYS }, { role: 'user', content: text }] }) });
+    if (!r.ok) return null;
+    const j = await r.json().catch(() => null);
+    const out = String(j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content || '').trim();
+    const ph = text.match(/\{name\}/g) || [];
+    if (!out || out.length > 3500 || (out.match(/\{name\}/g) || []).length < ph.length || /^\s*\{?"?(error|detail)/i.test(out)) return null;
+    return out;
+  } catch { return null; } finally { clearTimeout(t); }
 }
+// offline formatter: greeting line, bold title, one bullet per sentence with a fitting emoji, call-to-action line
+function aiLocal(text) {
+  const ico = [[/خصم|عرض|تخفيض|offer|sale|discount/i, '🔥'], [/شقة|شقق|عقار|فيلا|وحدة|سكن|apartment|property/i, '🏠'], [/سعر|جنيه|ريال|دينار|درهم|دولار|price|\$/i, '💰'], [/موعد|تاريخ|يوم|الشهر|أسبوع|ساعة|date|today|tomorrow/i, '📅'],
+    [/جديد|وصل|إطلاق|new|launch/i, '✨'], [/توصيل|شحن|delivery|shipping/i, '🚚'], [/ضمان|جودة|warranty|quality/i, '✅'], [/كلمنا|كلمنى|اتصل|تواصل|واتساب|رد |call|contact|reply/i, '📞']];
+  const pick = s => { for (const [re, e] of ico) if (re.test(s)) return e; return '▪️'; };
+  const bold = s => s.replace(/(\d+(?:[.,]\d+)?\s?%|\d[\d,.]*\s?(?:جنيه|ريال|دينار|درهم|دولار|EGP|SAR|KWD|AED|USD))/g, '*$1*');
+  let parts = String(text).replace(/\r/g, '').split(/\n+|(?<=[.!؟?!۔])\s+/).map(x => x.trim()).filter(Boolean);
+  if (!parts.length) return text;
+  const lines = []; const greet = /^(السلام عليكم|سلام عليكم|مرحبا|مرحباً|أهلا|أهلاً|اهلا|هاي|hello|hi)\b/i;
+  if (greet.test(parts[0]) && parts.length > 1) lines.push('👋 ' + parts.shift().replace(/[.،,]+$/, '') + '\n');
+  const cta = /(كلمنا|كلمنى|اتصل|تواصل|رد علينا|ابعت|احجز|سجل|call|contact|reply|book)/i;
+  let ctaLine = null; if (parts.length > 1 && cta.test(parts[parts.length - 1])) ctaLine = parts.pop();
+  const first = parts.shift();
+  lines.push(pick(first) + ' *' + first.replace(/[.!؟?]+$/, '') + '*');
+  if (parts.length) lines.push('');
+  for (const p of parts) lines.push(pick(p) + ' ' + bold(p.replace(/[.،,]+$/, '')));
+  if (ctaLine) lines.push('', '👇 ' + bold(ctaLine.replace(/[.،,]+$/, '')));
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+async function aiImprove(text) { const r = await aiRemote(text); return r ? { text: r, mode: 'ai' } : { text: aiLocal(text), mode: 'offline' }; }
 const rnd = (a, b) => (a + Math.random() * (b - a)) * 1000;
 async function run(j, o) {
   let sinceBatch = 0;
@@ -184,15 +206,10 @@ http.createServer(async (req, res) => {
     run(job, { blocks, channel: b.channel, minDelay: Math.max(3, +b.minDelay || 8), maxDelay: Math.max(+b.minDelay || 8, +b.maxDelay || 20), pauseMin: +b.pauseMin || 2, pauseMax: Math.max(+b.pauseMin || 2, +b.pauseMax || 4), dailyCap: +b.dailyCap || 100, optout: String(b.optout || '').slice(0, 200), atts, mode: b.mode, template: b.template, lang: b.lang, text: String(b.text || ''), useName: !!b.useName, batch: Math.max(1, +b.batch || 50), pause: Math.max(0, +b.pause || 60), delay: Math.max(0, +b.delay || 1000) });
     return json(res, { ok: true });
   }
-  if (req.url === '/api/ai/key' && req.method === 'POST') {
-    const b = await readBody(req); const key = String(b.key || '').trim().slice(0, 200);
-    try { if (key) fs.writeFileSync(AIF, JSON.stringify({ key })); else fs.unlinkSync(AIF); } catch {}
-    return json(res, { ok: true, hasKey: !!aiKey() });
-  }
   if (req.url === '/api/ai/improve' && req.method === 'POST') {
     const b = await readBody(req); const text = String(b.text || '').trim().slice(0, 3000);
     if (!text) return json(res, { error: 'اكتب نص الأول' }, 400);
-    try { return json(res, { text: await aiImprove(text) }); } catch (e) { return json(res, { error: e.message, needKey: !!e.needKey }, e.needKey ? 400 : 502); }
+    return json(res, await aiImprove(text));
   }
   if (req.url === '/api/link/status') return json(res, linked.status());
   if (req.url === '/api/link/start' && req.method === 'POST') { const b = await readBody(req); let ph = String(b.phone || '').replace(/\D/g, '').replace(/^00/, ''); if (/^[569]\d{7}$/.test(ph)) ph = '965' + ph; if (/^01[0125]\d{8}$/.test(ph)) ph = '20' + ph.slice(1); if (ph.length < 8) return json(res, { error: 'اكتب رقمك بالكود الدولي، مثلاً 96566012345' }, 400); linked.start(ph); return json(res, { ok: true }); }
