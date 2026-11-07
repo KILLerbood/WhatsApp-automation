@@ -61,7 +61,9 @@ async function sendOne(r, o) {
   for (let k = 0; k < o.atts.length; k++) {
     const a = o.atts[k]; if (!a.mediaId) a.mediaId = await uploadMedia(a);
     const img = a.mime.startsWith('image/'), cap = k === 0 ? text : undefined;
+    const vid = a.mime.startsWith('video/');
     const x = await post(img ? { ...base, type: 'image', image: { id: a.mediaId, caption: cap } }
+      : vid ? { ...base, type: 'video', video: { id: a.mediaId, caption: cap } }
       : { ...base, type: 'document', document: { id: a.mediaId, filename: a.name, caption: cap } });
     if (!x.ok) return x; first = first || x;
   }
@@ -157,8 +159,8 @@ http.createServer(async (req, res) => {
     const b = await readBody(req);
     if (!Array.isArray(b.rows) || !b.rows.length) return json(res, { error: 'مفيش أرقام' }, 400);
     if (b.channel === 'linked' && linked.status().state !== 'connected') return json(res, { error: 'اربط واتساب الأول (الربط بالكود)' }, 400);
-    const atts = (Array.isArray(b.atts) ? b.atts : []).slice(0, 5).map(a => ({ name: String(a.name || 'file').slice(0, 100), mime: String(a.mime || ''), buf: Buffer.from(String(a.data || ''), 'base64') })).filter(a => /^(image\/(jpeg|png|webp)|application\/pdf)$/.test(a.mime) && a.buf.length);
-    if (atts.some(a => a.buf.length > 16e6)) return json(res, { error: 'الملف أكبر من 16 ميجا' }, 400);
+    const atts = (Array.isArray(b.atts) ? b.atts : []).slice(0, 5).map(a => ({ name: String(a.name || 'file').slice(0, 100), mime: String(a.mime || ''), buf: Buffer.from(String(a.data || ''), 'base64') })).filter(a => /^(image\/(jpeg|png|webp)|application\/pdf|video\/(mp4|quicktime|3gpp|webm))$/.test(a.mime) && a.buf.length);
+    if (atts.some(a => a.buf.length > (a.mime.startsWith('video/') ? 50e6 : 16e6))) return json(res, { error: 'الملف كبير (الحد 16 ميجا للصور وPDF، و50 ميجا للفيديو)' }, 400);
     if (b.mode === 'template' ? !b.template : !(b.text || atts.length)) return json(res, { error: 'اكتب الرسالة أو اسم القالب' }, 400);
     job = { rows: b.rows.slice(0, +b.limit > 0 ? +b.limit : 1000).map(r => ({ number: r.number, name: r.name || '', status: 'queued', info: '' })), done: false, stop: false, live: b.channel === 'linked' || isLive(), note: '' };
     run(job, { channel: b.channel, minDelay: Math.max(3, +b.minDelay || 8), maxDelay: Math.max(+b.minDelay || 8, +b.maxDelay || 20), pauseMin: +b.pauseMin || 2, pauseMax: Math.max(+b.pauseMin || 2, +b.pauseMax || 4), dailyCap: +b.dailyCap || 100, optout: String(b.optout || '').slice(0, 200), atts, mode: b.mode, template: b.template, lang: b.lang, text: String(b.text || ''), useName: !!b.useName, batch: Math.max(1, +b.batch || 50), pause: Math.max(0, +b.pause || 60), delay: Math.max(0, +b.delay || 1000) });
