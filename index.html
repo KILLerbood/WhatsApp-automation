@@ -123,6 +123,11 @@ tbody tr{animation:fadeUp .4s both}
 <textarea id="text" placeholder="اكتب رسالتك هنا. ممكن تكتب {name} وهيتبدل باسم العميل"></textarea>
 <label class="m" style="margin-top:8px">صور أو فيديو أو ملف PDF (اختياري، لحد 5 ملفات، الرسالة بتتبعت كتعليق على أول ملف)<input type="file" id="atts" multiple accept="image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/quicktime,video/3gpp,video/webm"></label>
 <div id="attlist" class="m"></div>
+<div class="row" style="margin-top:8px"><button class="s" type="button" id="aiBtn" onclick="aiImprove()">✨ حسّن الرسالة بالذكاء الاصطناعي (مجاني)</button><button class="s" type="button" id="aiUndo" style="display:none" onclick="aiUndo()">↩ رجّع النص القديم</button><button class="s" type="button" onclick="aiKey()">🔑 مفتاح الذكاء الاصطناعي</button></div><p id="aiMsg" class="m"></p>
+<details id="blkbox" style="margin-top:8px"><summary>ترتيب الرسالة: أجزاء مرتبة (نص / صورة / فيديو / PDF)</summary>
+<p class="m">واتساب مش بيسمح بحط صورة جوه نص الرسالة. اللي بيتعمل إنك ترتّب أجزاء بتتبعت ورا بعض بالترتيب اللي تحدده: نص، ثم صورة بتعليق، ثم فيديو، وهكذا. لو ضفت أجزاء هنا هتتبعت هي بدل النص والمرفقات اللي فوق (مع الإرسال بالكود). تقدر تكتب {name} في أي نص.</p>
+<div id="blklist"></div><div class="row"><button type="button" class="s" onclick="addBlk('text')">+ نص</button><button type="button" class="s" onclick="addBlk('media')">+ صورة / فيديو / PDF</button></div></details>
+
 <details id="tplbox" style="margin-top:8px"><summary>متقدم: قالب معتمد من Meta</summary>
 <p class="m">واتساب بيشترط قالب معتمد لو بتبدأ المحادثة مع عميل مكلمكش آخر 24 ساعة. لو عندك قالب اكتب اسمه، وهيتبعت بدل النص أعلاه.</p>
 <div class="row"><input id="tname" dir="ltr" placeholder="اسم القالب"><input id="lang" dir="ltr" value="ar" placeholder="اللغة"></div></details></section>
@@ -150,6 +155,23 @@ tbody tr{animation:fadeUp .4s both}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 let rows=[],poll,last=[],lpoll,atts=[];
+let blks=[],aiPrev=null;
+const BACC='image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/quicktime,video/3gpp,video/webm',BOK=/^(image\/(jpeg|png|webp)|application\/pdf|video\/(mp4|quicktime|3gpp|webm))$/;
+function addBlk(k){if(blks.length>=10)return alert('الحد 10 أجزاء');blks.push({kind:k,text:'',file:null});drawBlk()}
+function blkPayload(){return blks.map(b=>({kind:b.kind,text:b.text,...(b.file||{})}))}
+function drawBlk(){const l=$('blklist');l.replaceChildren(...blks.map((b,i)=>{const d=document.createElement('div');d.style.cssText='border:1px solid var(--b);border-radius:14px;padding:10px;margin:8px 0;background:rgba(0,0,0,.2)';
+const h=document.createElement('div');h.className='row';h.style.alignItems='center';const t=document.createElement('b');t.textContent=(i+1)+'. '+(b.kind=='text'?'نص':'صورة / فيديو / PDF');
+const mk=(txt,fn,dis)=>{const x=document.createElement('button');x.type='button';x.className='s';x.style.padding='4px 12px';x.style.flex='0 0 auto';x.textContent=txt;x.disabled=!!dis;x.onclick=fn;return x};
+h.append(t,mk('↑',()=>{[blks[i-1],blks[i]]=[blks[i],blks[i-1]];drawBlk()},i==0),mk('↓',()=>{[blks[i+1],blks[i]]=[blks[i],blks[i+1]];drawBlk()},i==blks.length-1),mk('✕',()=>{blks.splice(i,1);drawBlk()}));d.append(h);
+if(b.kind=='media'){const f=document.createElement('input');f.type='file';f.accept=BACC;f.style.marginTop='8px';f.onchange=async()=>{const x=f.files[0];if(!x)return;if(!BOK.test(x.type))return alert('نوع الملف مش مدعوم');if(x.size>(x.type.startsWith('video/')?50e6:16e6))return alert('الملف كبير (الحد 16 ميجا للصور وPDF، و50 ميجا للفيديو)');b.file={name:x.name,mime:x.type,size:x.size,data:await rd(x)};drawBlk()};
+if(b.file){const p=document.createElement('p');p.className='m';p.textContent='✅ '+b.file.name+' ('+Math.max(1,Math.round(b.file.size/1e3))+' KB). اختار ملف تاني لو عايز تغيّره.';d.append(p)}d.append(f)}
+const ta=document.createElement('textarea');ta.style.cssText='min-height:70px;margin-top:8px';ta.placeholder=b.kind=='text'?'اكتب النص هنا...':'تعليق على الملف (اختياري)';ta.value=b.text;ta.oninput=()=>{b.text=ta.value};d.append(ta);return d}))}
+async function aiImprove(){const v=$('text').value.trim();if(!v)return alert('اكتب نص الأول وبعدين دوس تحسين');const bt=$('aiBtn');bt.disabled=true;$('aiMsg').textContent='بيحسّن الرسالة...';
+try{const r=await fetch('/api/ai/improve',{method:'POST',body:JSON.stringify({text:v})});const j=await r.json();if(!r.ok){$('aiMsg').textContent=j.error||'حصل خطأ';if(j.needKey)aiKey();bt.disabled=false;return}
+aiPrev=v;$('text').value=j.text;$('aiUndo').style.display='';$('aiMsg').textContent='تمام! راجع النص قبل الإرسال.'}catch(e){$('aiMsg').textContent='حصل خطأ: '+e.message}bt.disabled=false}
+function aiUndo(){if(aiPrev!=null){$('text').value=aiPrev;$('aiUndo').style.display='none'}}
+async function aiKey(){const k=prompt('الصق مفتاح Gemini المجاني (من https://aistudio.google.com/apikey، من غير كارت). سيبه فاضي لو عايز تمسحه:');if(k===null)return;const r=await fetch('/api/ai/key',{method:'POST',body:JSON.stringify({key:k})});const j=await r.json().catch(()=>({}));$('aiMsg').textContent=r.ok?(j.hasKey?'اتحفظ المفتاح ✅ دوس تحسين الرسالة':'اتمسح المفتاح'):(j.error||'حصل خطأ')}
+
 const cur={};function count(id,v){const el=document.getElementById(id),from=cur[id]||0;cur[id]=v;if(from===v){el.textContent=v;return}const t0=performance.now();(function f(t){const p=Math.min(1,(t-t0)/600),e=1-Math.pow(1-p,3);el.textContent=Math.round(from+(v-from)*e);if(p<1)requestAnimationFrame(f)})(t0)}
 function setStats(l){const s=l.filter(r=>r.status=='sent').length,f=l.filter(r=>r.status=='failed').length;count('sTotal',l.length);count('sSent',s);count('sFail',f);count('sLeft',l.filter(r=>r.status=='queued'||r.status=='sending').length)}
 const rd=f=>new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result.split(',')[1]);x.readAsDataURL(f)});
@@ -178,9 +200,11 @@ async function parseNums(){const r=await (await fetch('/api/parse',{method:'POST
 $('sum').textContent=`جاهز: ${r.ok.length} رقم · مكرر اتشال: ${r.dup} · غير صالح: ${r.bad.length}`+(r.bad.length?' ('+r.bad.slice(0,5).join(' | ')+')':'');
 $('go').disabled=!rows.length;render(rows.map(x=>({...x,status:'queued',info:''})))}
 function render(l){setStats(l);$('tb').innerHTML=l.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td><td dir="ltr">+${r.number}</td><td class="${r.status}">${{queued:'في الانتظار',sending:'جاري...',sent:'اتبعت',failed:'فشل',stopped:'اتوقف'}[r.status]}</td><td class="m">${esc(r.info||'')}</td></tr>`).join('')}
-async function go(){const L=chan()=='linked';const t=L?'':$('tname').value.trim();if(!t&&!$('text').value.trim()&&!atts.length)return alert('اكتب الرسالة أو ضيف ملف');
+async function go(){const L=chan()=='linked';const t=L?'':$('tname').value.trim();if(!t&&!$('text').value.trim()&&!atts.length&&!blks.length)return alert('اكتب الرسالة أو ضيف ملف');
+if(blks.length&&!L)return alert('الأجزاء المرتبة شغالة مع الربط بالكود بس');
+if(blks.some(b=>b.kind=='media'&&!b.file))return alert('في جزء ميديا من غير ملف');
 const n=L&&+$('limit').value>0?Math.min(+$('limit').value,rows.length):rows.length;if(!confirm(`هتبعت لـ ${n} رقم. متأكد؟`))return;
-const r=await fetch('/api/send',{method:'POST',body:JSON.stringify({atts:t?[]:atts,channel:chan(),limit:L?$('limit').value:0,minDelay:$('mind').value,maxDelay:$('maxd').value,pauseMin:$('pmin').value,pauseMax:$('pmax').value,dailyCap:$('cap').value,optout:$('optout').value,rows,mode:t?'template':'text',template:t,lang:$('lang').value,useName:false,text:$('text').value,batch:L?$('lbatch').value:$('batch').value,pause:$('pause').value,delay:$('delay').value})});
+const r=await fetch('/api/send',{method:'POST',body:JSON.stringify({blocks:L?blkPayload():[],atts:t?[]:atts,channel:chan(),limit:L?$('limit').value:0,minDelay:$('mind').value,maxDelay:$('maxd').value,pauseMin:$('pmin').value,pauseMax:$('pmax').value,dailyCap:$('cap').value,optout:$('optout').value,rows,mode:t?'template':'text',template:t,lang:$('lang').value,useName:false,text:$('text').value,batch:L?$('lbatch').value:$('batch').value,pause:$('pause').value,delay:$('delay').value})});
 const j=await r.json();if(!r.ok)return alert(j.error);poll=setInterval(tick,800)}
 async function tick(){const j=await (await fetch('/api/job')).json();last=j.rows;render(j.rows);$('note').textContent=j.note||'';
 const d=j.rows.filter(r=>r.status=='sent'||r.status=='failed').length;$('pb').style.width=(d/Math.max(1,j.rows.length)*100)+'%';
