@@ -123,7 +123,7 @@ return R({error:'not found'},404)};
 /* Bridge: if a backend URL is saved (?backend=https://xxxx.trycloudflare.com), call the real server on the user's laptop; otherwise stay in demo mode. */
 const LS=k=>{try{return localStorage.getItem(k)||''}catch{return ''}},SV=(k,v)=>{try{v?localStorage.setItem(k,v):localStorage.removeItem(k)}catch{}};
 const q=new URLSearchParams(location.search);
-if(q.get('backend')){SV('wa_backend',q.get('backend').trim().replace(/\/+$/,''));SV('wa_token','');q.delete('backend');history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:'')+location.hash)}
+if(q.get('backend')){SV('wa_backend',q.get('backend').trim().replace(/\/+$/,''));SV('wa_token','');}
 const BE=LS('wa_backend');window.WA_BACKEND=BE;
 let lp=null;
 function login(){if(lp)return lp;lp=(async()=>{try{const pw=prompt('اكتب باسورد السيرفر (اللي حطيته في online.bat):');if(!pw)return false;
@@ -138,7 +138,7 @@ if(r.status===401&&p!=='/api/login'&&await login())r=await go();return r}})();
 <div class="hero"><div class="brand"><div class="logo">✦</div><div><h1>منصة الإرسال الذكي</h1><p>رسايل واتساب لعملاءك، بهدوء وأمان</p></div></div><div style="display:flex;gap:8px;align-items:center"><span id="mode" class="badge">...</span><button class="s" id="logoutBtn" style="display:none;padding:6px 14px" onclick="fetch('/api/logout',{method:'POST'}).then(()=>{try{localStorage.removeItem('wa_token')}catch(e){}location.reload()})">خروج</button></div></div>
 <div class="demo" id="demoBar">✦ نسخة عرض: جرّب التصميم وتنضيف الأرقام والمرفقات وإرسال تجريبي. الإرسال الحقيقي بيشتغل من نسخة السيرفر · <a href="https://github.com/KILLerbood/whatsapp-automation#readme" target="_blank" rel="noopener">طريقة التشغيل</a></div>
 <script>(function(){var b=window.WA_BACKEND,el=document.getElementById('demoBar');if(!b)return;el.textContent='⏳ بيتصل بالسيرفر على جهازك...';
-var n=0;function chk(){fetch(b+'/healthz',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;el.textContent='✅ متصل بالسيرفر على جهازك (إرسال حقيقي)';el.style.color='#7ff0a8'}).catch(function(){n++;el.style.color='#ff9b9b';el.textContent='❌ السيرفر مش متصل ('+n+')... بيحاول تاني. لو فضل كده شغّل online.bat وافتح اللينك اللي بيطلعلك.';setTimeout(chk,4000)})}chk()})();</script>
+var n=0;function chk(){fetch(b+'/healthz',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;el.textContent='✅ متصل بالسيرفر على جهازك (إرسال حقيقي)';el.style.color='#7ff0a8'}).catch(function(){n++;el.style.color='#ff9b9b';el.textContent='❌ مش قادر أوصل للسيرفر ('+n+') '+b.replace('https://','')+' ... بيحاول تاني. اتأكد إن اللابتوب شغال وonline.bat مفتوح، وإنك فاتح اللينك الكامل في Safari أو Chrome.';setTimeout(chk,4000)})}chk()})();</script>
 <div class="stats"><div class="stat gd"><b id="sTotal">0</b><span>إجمالي الأرقام</span></div><div class="stat ok"><b id="sSent">0</b><span>اتبعت</span></div><div class="stat no"><b id="sFail">0</b><span>فشل</span></div><div class="stat"><b id="sLeft">0</b><span>متبقي</span></div></div>
 
 <section id="conn"><h2>1. ربط واتساب</h2>
