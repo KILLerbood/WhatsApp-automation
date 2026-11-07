@@ -130,10 +130,15 @@ let aiWhy = '';
 const STYLES = ['bullet list: one fitting emoji at the start of each line', 'sections separated by a divider line ━━━━━━━━━━━━, short paragraphs', 'checklist style using ✅ and ▫️ bullets', 'headline then numbered points using 1️⃣ 2️⃣ 3️⃣', 'compact style: emoji headline, one-line intro, items joined with ➜ arrows'];
 async function aiRemote(text, seed = 0) {
   aiWhy = '';
-  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 30000);
+  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 40000);
   try {
-    const r = await fetch('https://text.pollinations.ai/openai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctl.signal,
-      body: JSON.stringify({ model: 'openai', temperature: seed ? 0.9 : 0.5, seed: 1000 + seed, messages: [{ role: 'system', content: AI_SYS }, { role: 'user', content: text + (seed ? '\n\n[Rewrite attempt #' + seed + '. Use a DIFFERENT layout and different (still fitting) emojis than a typical first answer. Layout for this attempt: ' + STYLES[seed % STYLES.length] + '. Do not mention this note.]' : '') }] }) });
+    let r = null;
+    for (const model of ['openai', 'openai-fast', 'mistral']) { // the free tier is rate limited (402/429): retry once on another model
+      r = await fetch('https://text.pollinations.ai/openai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctl.signal,
+      body: JSON.stringify({ model, temperature: seed ? 0.9 : 0.5, seed: 1000 + seed, messages: [{ role: 'system', content: AI_SYS }, { role: 'user', content: text + (seed ? '\n\n[Rewrite attempt #' + seed + '. Use a DIFFERENT layout and different (still fitting) emojis than a typical first answer. Layout for this attempt: ' + STYLES[seed % STYLES.length] + '. Do not mention this note.]' : '') }] }) });
+      if (r.ok || ![402, 429, 500, 502, 503, 504].includes(r.status)) break;
+      aiWhy = 'http ' + r.status; await new Promise(z => setTimeout(z, 1200));
+    }
     if (!r.ok) { aiWhy = 'http ' + r.status; return null; }
     const j = await r.json().catch(() => null);
     const raw = String(j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content || '').trim();
@@ -146,7 +151,7 @@ async function aiRemote(text, seed = 0) {
   } catch (e) { aiWhy = 'error: ' + e.message; return null; } finally { clearTimeout(tm); }
 }
 // offline formatter: parses the message into title / items / call-to-action / links, then renders it in one of several styles (seed rotates style + emojis)
-const ICO = [[/إنزيم|انزيم/, ['❤', '🧬', '⚕️']], [/دم|سكر/, ['🩸', '💧', '🔬']], [/كبد|كلى|كلية|غدة|قلب|ضغط/, ['🫀', '🩺', '🏥']], [/فيتامين|معادن|دهون|دواء|علاج|صيدلية/, ['💊', '🥗', '⚕️']],
+const ICO = [[/إنزيم|انزيم/, ['❤', '🧬', '🧫']], [/دم|سكر/, ['🩸', '💧', '🔬']], [/كبد|كلى|كلية|غدة|قلب|ضغط/, ['🫀', '🩺', '🩻']], [/فيتامين|معادن|دهون|دواء|علاج|صيدلية/, ['💊', '🥗', '🧴']],
   [/فحص|فحوصات|تحليل|تحاليل|مختبر|معمل|lab/i, ['🧪', '🔬', '🏥']], [/زيارة منزلية|home visit/i, ['🏠', '🚗', '🏡']], [/نتيجة|ساعة|سريع|result|hours/i, ['⏱', '⚡', '🕐']],
   [/خصم|عرض|تخفيض|offer|sale|discount/i, ['🔥', '🎁', '💥']], [/شقة|شقق|عقار|فيلا|وحدة|سكن|apartment|property/i, ['🏘', '🏠', '🔑']], [/سعر|جنيه|ريال|دينار|درهم|دولار|price|\$/i, ['💰', '💵', '🏷']],
   [/موعد|تاريخ|الشهر|أسبوع|date|tomorrow|today/i, ['📅', '🗓', '⏰']], [/توصيل|شحن|delivery|shipping/i, ['🚚', '📦', '🛵']], [/ضمان|جودة|warranty|quality/i, ['✅', '🛡', '⭐']],
