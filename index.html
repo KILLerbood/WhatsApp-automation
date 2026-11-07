@@ -169,7 +169,7 @@ const ta=document.createElement('textarea');ta.style.cssText='min-height:70px;ma
 async function aiImprove(){const cur=$('text').value.trim();if(!cur)return alert('اكتب نص الأول وبعدين دوس تحسين');
 if(aiOrig===null||cur!==aiSet){aiOrig=cur;aiN=0}const v=aiOrig;const bt=$('aiBtn');bt.disabled=true;$('aiMsg').textContent='بيحسّن الرسالة...';
 try{const r=await fetch('/api/ai/improve',{method:'POST',body:JSON.stringify({text:v,seed:aiN})});const j=await r.json();if(!r.ok){$('aiMsg').textContent=j.error||'حصل خطأ';bt.disabled=false;return}
-aiN++;aiSet=j.text;$('text').value=j.text;$('aiUndo').style.display='';$('aiMsg').textContent=j.mode=='ai'?'تمام! اتحسّنت بالذكاء الاصطناعي. راجع النص قبل الإرسال.':'الذكاء الاصطناعي مش متاح دلوقتي، فاتنسّقت بالتنسيق التلقائي (إيموجي وعنوان ونقط). راجع النص قبل الإرسال.'}catch(e){$('aiMsg').textContent='حصل خطأ: '+e.message}bt.disabled=false}
+aiN++;aiSet=j.text;$('text').value=j.text;$('aiUndo').style.display='';$('aiMsg').textContent=j.mode=='claude'?'تمام! Claude حسّن الرسالة. راجع النص قبل الإرسال.':j.mode=='ai'?'تمام! اتحسّنت بالذكاء الاصطناعي. راجع النص قبل الإرسال.':'الذكاء الاصطناعي مش متاح دلوقتي، فاتنسّقت بالتنسيق التلقائي (إيموجي وعنوان ونقط). راجع النص قبل الإرسال.'}catch(e){$('aiMsg').textContent='حصل خطأ: '+e.message}bt.disabled=false}
 function aiUndo(){if(aiOrig!=null){$('text').value=aiOrig;aiSet=null;aiOrig=null;aiN=0;$('aiUndo').style.display='none'}}
 
 const cur={};function count(id,v){const el=document.getElementById(id),from=cur[id]||0;cur[id]=v;if(from===v){el.textContent=v;return}const t0=performance.now();(function f(t){const p=Math.min(1,(t-t0)/600),e=1-Math.pow(1-p,3);el.textContent=Math.round(from+(v-from)*e);if(p<1)requestAnimationFrame(f)})(t0)}
