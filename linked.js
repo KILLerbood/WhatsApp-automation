@@ -71,6 +71,7 @@ async function sendText(number, text, atts = []) {
   for (let k = 0; k < atts.length; k++) {
     const a = atts[k], caption = k === 0 ? text : undefined;
     const msg = a.mime.startsWith('image/') ? { image: a.buf, caption, mimetype: a.mime }
+      : a.mime.startsWith('video/') ? { video: a.buf, caption, mimetype: a.mime === 'video/quicktime' ? 'video/mp4' : a.mime }
       : { document: a.buf, mimetype: a.mime, fileName: a.name, caption };
     const m = await L.sock.sendMessage(jid, msg); id = id || (m && m.key && m.key.id);
     if (k < atts.length - 1) await new Promise(r => setTimeout(r, 1500 + Math.random() * 2000));

@@ -121,7 +121,7 @@ tbody tr{animation:fadeUp .4s both}
 
 <section><h2>3. الرسالة</h2>
 <textarea id="text" placeholder="اكتب رسالتك هنا. ممكن تكتب {name} وهيتبدل باسم العميل"></textarea>
-<label class="m" style="margin-top:8px">صور أو ملف PDF (اختياري، لحد 5 ملفات، الرسالة بتتبعت كتعليق على أول ملف)<input type="file" id="atts" multiple accept="image/jpeg,image/png,image/webp,application/pdf"></label>
+<label class="m" style="margin-top:8px">صور أو فيديو أو ملف PDF (اختياري، لحد 5 ملفات، الرسالة بتتبعت كتعليق على أول ملف)<input type="file" id="atts" multiple accept="image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/quicktime,video/3gpp,video/webm"></label>
 <div id="attlist" class="m"></div>
 <details id="tplbox" style="margin-top:8px"><summary>متقدم: قالب معتمد من Meta</summary>
 <p class="m">واتساب بيشترط قالب معتمد لو بتبدأ المحادثة مع عميل مكلمكش آخر 24 ساعة. لو عندك قالب اكتب اسمه، وهيتبعت بدل النص أعلاه.</p>
@@ -196,18 +196,18 @@ addEventListener('load',()=>setTimeout(()=>{document.getElementById('intro').cla
 setTimeout(()=>{document.getElementById('intro').classList.add('done');document.body.classList.add('ready')},3500);
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const r=b.getBoundingClientRect(),s=Math.max(r.width,r.height),d=document.createElement('span');d.className='rip';d.style.cssText=`width:${s}px;height:${s}px;left:${e.clientX-r.left-s/2}px;top:${e.clientY-r.top-s/2}px`;b.appendChild(d);setTimeout(()=>d.remove(),650)});
 (()=>{const inp=$('atts'),lab=inp.closest('label'),list=$('attlist'),mk=(c,t)=>{const e=document.createElement('div');e.className=c;if(t)e.textContent=t;return e};
-const dz=mk('dz'),cnt=mk('dz-c');dz.append(mk('dz-ic','⇪'),mk('dz-t','اسحب الصور أو ملفات PDF هنا'),mk('dz-h','أو اضغط للاختيار · JPG / PNG / WebP / PDF · لحد 16 ميجا للملف · الرسالة بتتبعت كتعليق على أول ملف'),cnt);
+const dz=mk('dz'),cnt=mk('dz-c');dz.append(mk('dz-ic','⇪'),mk('dz-t','اسحب الصور أو الفيديو أو ملفات PDF هنا'),mk('dz-h','أو اضغط للاختيار · JPG / PNG / WebP / PDF · MP4 / MOV فيديو · لحد 16 ميجا للصورة وPDF و50 ميجا للفيديو · الرسالة بتتبعت كتعليق على أول ملف'),cnt);
 lab.replaceWith(dz);inp.hidden=true;dz.appendChild(inp);dz.onclick=()=>inp.click();
 ['dragenter','dragover'].forEach(n=>dz.addEventListener(n,e=>{e.preventDefault();dz.classList.add('over')}));
 ['dragleave','drop'].forEach(n=>dz.addEventListener(n,e=>{e.preventDefault();dz.classList.remove('over')}));
 dz.addEventListener('drop',e=>add([...e.dataTransfer.files]));
 inp.onclick=e=>e.stopPropagation();inp.onchange=()=>{add([...inp.files]);inp.value=''};
-const OK=/^(image\/(jpeg|png|webp)|application\/pdf)$/,sz=b=>b>1e6?(b/1e6).toFixed(1)+' MB':Math.max(1,Math.round(b/1e3))+' KB';
-async function add(fs){fs=fs.filter(f=>OK.test(f.type));if(fs.some(f=>f.size>16e6))alert('في ملف أكبر من 16 ميجا واتشال');
-for(const f of fs.filter(f=>f.size<=16e6).slice(0,5-atts.length))atts.push({name:f.name,mime:f.type,size:f.size,url:URL.createObjectURL(f),data:await rd(f)});draw()}
+const OK=/^(image\/(jpeg|png|webp)|application\/pdf|video\/(mp4|quicktime|3gpp|webm))$/,MAXF=f=>f.type.startsWith('video/')?50e6:16e6,sz=b=>b>1e6?(b/1e6).toFixed(1)+' MB':Math.max(1,Math.round(b/1e3))+' KB';
+async function add(fs){fs=fs.filter(f=>OK.test(f.type));if(fs.some(f=>f.size>MAXF(f)))alert('في ملف كبير واتشال (الحد 16 ميجا للصور وPDF، و50 ميجا للفيديو)');
+for(const f of fs.filter(f=>f.size<=MAXF(f)).slice(0,5-atts.length))atts.push({name:f.name,mime:f.type,size:f.size,url:URL.createObjectURL(f),data:await rd(f)});draw()}
 function draw(){cnt.textContent=atts.length+' / 5';dz.classList.toggle('full',atts.length>=5);list.className='att-grid';
 list.replaceChildren(...atts.map((a,i)=>{const c=mk('att'),th=mk('att-th'),n=mk('att-n',a.name),x=document.createElement('button');c.style.animationDelay=i*60+'ms';
-if(a.mime.startsWith('image/'))th.style.backgroundImage='url('+a.url+')';else{th.classList.add('pdf');th.textContent='PDF'}
+if(a.mime.startsWith('image/'))th.style.backgroundImage='url('+a.url+')';else if(a.mime.startsWith('video/')){const v=document.createElement('video');v.src=a.url+'#t=0.1';v.muted=true;v.preload='metadata';v.playsInline=true;v.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:inherit';th.append(v)}else{th.classList.add('pdf');th.textContent='PDF'}
 n.title=a.name;x.type='button';x.className='att-x';x.textContent='✕';x.title='شيل';x.onclick=e=>{e.stopPropagation();atts.splice(i,1);draw()};
 c.append(th,n,mk('att-s',sz(a.size)),x);return c}))}
 draw()})();
