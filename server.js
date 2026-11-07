@@ -69,6 +69,20 @@ async function sendOne(r, o) {
   }
   return first;
 }
+const MEDIA_OK = /^(image\/(jpeg|png|webp)|application\/pdf|video\/(mp4|quicktime|3gpp|webm))$/;
+// --- free AI "improve message" (Google Gemini free tier; key saved in DATA_DIR/ai.json or GEMINI_API_KEY) ---
+const AIF = path.join(DATA, 'ai.json'), AI_MODEL = process.env.GEMINI_MODEL || env.GEMINI_MODEL || 'gemini-flash-latest';
+const aiKey = () => { try { return JSON.parse(fs.readFileSync(AIF, 'utf8')).key || ''; } catch { return process.env.GEMINI_API_KEY || env.GEMINI_API_KEY || ''; } };
+const AI_SYS = 'You rewrite WhatsApp broadcast messages for a small business. Keep the same language and dialect as the input (if it is Arabic, keep the same Arabic dialect, e.g. Egyptian). Make it clear, friendly and well organised: short lines, a catchy first line, a few fitting emojis (not too many), WhatsApp formatting such as *bold* for key points, and a clear call to action. Keep every placeholder like {name} exactly as written. Never invent facts, prices, dates, links or phone numbers that are not in the input. Reply with the rewritten message only, no explanations.';
+async function aiImprove(text) {
+  const key = aiKey(); if (!key) { const e = new Error('محتاج مفتاح Gemini المجاني الأول (دوس على زرار المفتاح)'); e.needKey = true; throw e; }
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${AI_MODEL}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify({ systemInstruction: { parts: [{ text: AI_SYS }] }, contents: [{ role: 'user', parts: [{ text }] }], generationConfig: { temperature: 0.7 } }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((j.error && j.error.message) || ('خطأ من Gemini ' + r.status));
+  const out = ((((j.candidates || [])[0] || {}).content || {}).parts || []).map(p => p.text || '').join('').trim();
+  if (!out) throw new Error('الذكاء الاصطناعي مرجّعش رد، جرّب تاني'); return out;
+}
 const rnd = (a, b) => (a + Math.random() * (b - a)) * 1000;
 async function run(j, o) {
   let sinceBatch = 0;
@@ -81,7 +95,7 @@ async function run(j, o) {
       try {
         if (!(await linked.check(r.number))) { r.status = 'failed'; r.info = 'الرقم مش على واتساب'; continue; }
         const txt = o.text.replace(/\{name\}/g, r.name || '') + (o.optout ? '\n\n' + o.optout : '');
-        r.info = await linked.sendText(r.number, txt, o.atts) || ''; r.status = 'sent'; linked.bump(); sinceBatch++;
+        r.info = (o.blocks.length ? await linked.sendBlocks(r.number, o.blocks.map(b => ({ ...b, text: (b.text || '').replace(/\{name\}/g, r.name || '') })), o.optout) : await linked.sendText(r.number, txt, o.atts)) || ''; r.status = 'sent'; linked.bump(); sinceBatch++;
       } catch (e) { r.status = 'failed'; r.info = e.message; }
       if (i < j.rows.length - 1 && !j.stop) await sleep(rnd(o.minDelay, o.maxDelay));
       continue;
@@ -159,12 +173,26 @@ http.createServer(async (req, res) => {
     const b = await readBody(req);
     if (!Array.isArray(b.rows) || !b.rows.length) return json(res, { error: 'مفيش أرقام' }, 400);
     if (b.channel === 'linked' && linked.status().state !== 'connected') return json(res, { error: 'اربط واتساب الأول (الربط بالكود)' }, 400);
-    const atts = (Array.isArray(b.atts) ? b.atts : []).slice(0, 5).map(a => ({ name: String(a.name || 'file').slice(0, 100), mime: String(a.mime || ''), buf: Buffer.from(String(a.data || ''), 'base64') })).filter(a => /^(image\/(jpeg|png|webp)|application\/pdf|video\/(mp4|quicktime|3gpp|webm))$/.test(a.mime) && a.buf.length);
+    const atts = (Array.isArray(b.atts) ? b.atts : []).slice(0, 5).map(a => ({ name: String(a.name || 'file').slice(0, 100), mime: String(a.mime || ''), buf: Buffer.from(String(a.data || ''), 'base64') })).filter(a => MEDIA_OK.test(a.mime) && a.buf.length);
     if (atts.some(a => a.buf.length > (a.mime.startsWith('video/') ? 50e6 : 16e6))) return json(res, { error: 'الملف كبير (الحد 16 ميجا للصور وPDF، و50 ميجا للفيديو)' }, 400);
-    if (b.mode === 'template' ? !b.template : !(b.text || atts.length)) return json(res, { error: 'اكتب الرسالة أو اسم القالب' }, 400);
+    const blocks = (Array.isArray(b.blocks) ? b.blocks : []).slice(0, 10).map(x => x && x.kind === 'text' ? { kind: 'text', text: String(x.text || '').slice(0, 4000) }
+      : { kind: 'media', text: String(x.text || '').slice(0, 1000), name: String((x && x.name) || 'file').slice(0, 100), mime: String((x && x.mime) || ''), buf: Buffer.from(String((x && x.data) || ''), 'base64') })
+      .filter(x => x.kind === 'text' ? x.text.trim() : (MEDIA_OK.test(x.mime) && x.buf.length && x.buf.length <= (x.mime.startsWith('video/') ? 50e6 : 16e6)));
+    if (blocks.length && b.channel !== 'linked') return json(res, { error: 'الأجزاء المرتبة شغالة مع الربط بالكود بس' }, 400);
+    if (b.mode === 'template' ? !b.template : !(b.text || atts.length || blocks.length)) return json(res, { error: 'اكتب الرسالة أو اسم القالب' }, 400);
     job = { rows: b.rows.slice(0, +b.limit > 0 ? +b.limit : 1000).map(r => ({ number: r.number, name: r.name || '', status: 'queued', info: '' })), done: false, stop: false, live: b.channel === 'linked' || isLive(), note: '' };
-    run(job, { channel: b.channel, minDelay: Math.max(3, +b.minDelay || 8), maxDelay: Math.max(+b.minDelay || 8, +b.maxDelay || 20), pauseMin: +b.pauseMin || 2, pauseMax: Math.max(+b.pauseMin || 2, +b.pauseMax || 4), dailyCap: +b.dailyCap || 100, optout: String(b.optout || '').slice(0, 200), atts, mode: b.mode, template: b.template, lang: b.lang, text: String(b.text || ''), useName: !!b.useName, batch: Math.max(1, +b.batch || 50), pause: Math.max(0, +b.pause || 60), delay: Math.max(0, +b.delay || 1000) });
+    run(job, { blocks, channel: b.channel, minDelay: Math.max(3, +b.minDelay || 8), maxDelay: Math.max(+b.minDelay || 8, +b.maxDelay || 20), pauseMin: +b.pauseMin || 2, pauseMax: Math.max(+b.pauseMin || 2, +b.pauseMax || 4), dailyCap: +b.dailyCap || 100, optout: String(b.optout || '').slice(0, 200), atts, mode: b.mode, template: b.template, lang: b.lang, text: String(b.text || ''), useName: !!b.useName, batch: Math.max(1, +b.batch || 50), pause: Math.max(0, +b.pause || 60), delay: Math.max(0, +b.delay || 1000) });
     return json(res, { ok: true });
+  }
+  if (req.url === '/api/ai/key' && req.method === 'POST') {
+    const b = await readBody(req); const key = String(b.key || '').trim().slice(0, 200);
+    try { if (key) fs.writeFileSync(AIF, JSON.stringify({ key })); else fs.unlinkSync(AIF); } catch {}
+    return json(res, { ok: true, hasKey: !!aiKey() });
+  }
+  if (req.url === '/api/ai/improve' && req.method === 'POST') {
+    const b = await readBody(req); const text = String(b.text || '').trim().slice(0, 3000);
+    if (!text) return json(res, { error: 'اكتب نص الأول' }, 400);
+    try { return json(res, { text: await aiImprove(text) }); } catch (e) { return json(res, { error: e.message, needKey: !!e.needKey }, e.needKey ? 400 : 502); }
   }
   if (req.url === '/api/link/status') return json(res, linked.status());
   if (req.url === '/api/link/start' && req.method === 'POST') { const b = await readBody(req); let ph = String(b.phone || '').replace(/\D/g, '').replace(/^00/, ''); if (/^[569]\d{7}$/.test(ph)) ph = '965' + ph; if (/^01[0125]\d{8}$/.test(ph)) ph = '20' + ph.slice(1); if (ph.length < 8) return json(res, { error: 'اكتب رقمك بالكود الدولي، مثلاً 96566012345' }, 400); linked.start(ph); return json(res, { ok: true }); }

@@ -61,6 +61,28 @@ function autostart() { if (fs.existsSync(path.join(AUTH, 'creds.json'))) start('
 async function check(number) { // is the number on WhatsApp?
   try { const r = await L.sock.onWhatsApp(number + '@s.whatsapp.net'); return !!(r && r[0] && r[0].exists); } catch { return true; }
 }
+const mediaMsg = (a, caption) => a.mime.startsWith('image/') ? { image: a.buf, caption, mimetype: a.mime }
+  : a.mime.startsWith('video/') ? { video: a.buf, caption, mimetype: a.mime === 'video/quicktime' ? 'video/mp4' : a.mime }
+  : { document: a.buf, mimetype: a.mime, fileName: a.name, caption };
+const nap = ms => new Promise(r => setTimeout(r, ms));
+// ordered blocks: each is {kind:'text', text} or {kind:'media', text(caption), buf, mime, name}; sent one after another
+async function sendBlocks(number, blocks, optout = '') {
+  if (L.state !== 'connected' || !L.sock) throw new Error('واتساب مش متصل');
+  const jid = number + '@s.whatsapp.net';
+  try { await L.sock.sendPresenceUpdate('composing', jid); } catch {}
+  let last = -1; blocks.forEach((b, i) => { if (b.text) last = i; });
+  let id = '';
+  for (let k = 0; k < blocks.length; k++) {
+    const b = blocks[k]; let text = b.text || '';
+    if (optout && k === last) text += (text ? '\n\n' : '') + optout;
+    await nap(b.kind === 'text' ? Math.min(6000, 800 + text.length * 40) : 1200 + Math.random() * 1500);
+    const m = await L.sock.sendMessage(jid, b.kind === 'text' ? { text } : mediaMsg(b, text || undefined));
+    id = id || (m && m.key && m.key.id);
+  }
+  if (optout && last === -1) { await nap(1200); await L.sock.sendMessage(jid, { text: optout }); }
+  try { await L.sock.sendPresenceUpdate('paused', jid); } catch {}
+  return id;
+}
 async function sendText(number, text, atts = []) {
   if (L.state !== 'connected' || !L.sock) throw new Error('واتساب مش متصل');
   const jid = number + '@s.whatsapp.net';
@@ -70,10 +92,7 @@ async function sendText(number, text, atts = []) {
   if (!atts.length) { const m = await L.sock.sendMessage(jid, { text }); id = m && m.key && m.key.id; }
   for (let k = 0; k < atts.length; k++) {
     const a = atts[k], caption = k === 0 ? text : undefined;
-    const msg = a.mime.startsWith('image/') ? { image: a.buf, caption, mimetype: a.mime }
-      : a.mime.startsWith('video/') ? { video: a.buf, caption, mimetype: a.mime === 'video/quicktime' ? 'video/mp4' : a.mime }
-      : { document: a.buf, mimetype: a.mime, fileName: a.name, caption };
-    const m = await L.sock.sendMessage(jid, msg); id = id || (m && m.key && m.key.id);
+    const m = await L.sock.sendMessage(jid, mediaMsg(a, caption)); id = id || (m && m.key && m.key.id);
     if (k < atts.length - 1) await new Promise(r => setTimeout(r, 1500 + Math.random() * 2000));
   }
   try { await L.sock.sendPresenceUpdate('paused', jid); } catch {}
@@ -84,4 +103,4 @@ const today = () => new Date().toISOString().slice(0, 10);
 function used() { try { const u = JSON.parse(fs.readFileSync(USAGE, 'utf8')); return u.day === today() ? u.n : 0; } catch { return 0; } }
 function bump() { fs.writeFileSync(USAGE, JSON.stringify({ day: today(), n: used() + 1 })); }
 const status = () => ({ state: L.state, code: L.code, number: L.number, error: L.error, usedToday: used() });
-module.exports = { start, logout, autostart, status, check, sendText, used, bump };
+module.exports = { start, logout, autostart, status, check, sendText, sendBlocks, used, bump };
