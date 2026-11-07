@@ -131,13 +131,14 @@ const r=await of(BE+'/api/login',{method:'POST',body:JSON.stringify({password:pw
 if(r.ok&&j.token){SV('wa_token',j.token);return true}alert(j.error||'الباسورد غلط');return false}catch{alert('السيرفر مش متصل. شغّل online.bat على جهازك.');return false}finally{setTimeout(()=>{lp=null},1500)}})();return lp}
 window.fetch=async(u,o={})=>{const p=String(u).split('?')[0];if(!p.startsWith('/api/'))return of(u,o);if(!BE)return demoFetch(u,o);
 const go=()=>of(BE+u,{...o,headers:{...(o.headers||{}),Authorization:'Bearer '+LS('wa_token')}});
-let r;try{r=await go()}catch{return R({error:'السيرفر مش متصل. شغّل online.bat على جهازك.'},503)}
+let r;for(let k=0;k<4;k++){try{r=await go();break}catch{await new Promise(z=>setTimeout(z,2500))}}
+if(!r)return R({error:'السيرفر مش متصل. شغّل online.bat على جهازك.'},503)
 if(r.status===401&&p!=='/api/login'&&await login())r=await go();return r}})();
 </script></head><body><div id="intro"><div class="ring"></div><div class="core">✦</div><div class="tx">منصة الإرسال الذكي</div></div><canvas id="bg3d"></canvas><main>
 <div class="hero"><div class="brand"><div class="logo">✦</div><div><h1>منصة الإرسال الذكي</h1><p>رسايل واتساب لعملاءك، بهدوء وأمان</p></div></div><div style="display:flex;gap:8px;align-items:center"><span id="mode" class="badge">...</span><button class="s" id="logoutBtn" style="display:none;padding:6px 14px" onclick="fetch('/api/logout',{method:'POST'}).then(()=>{try{localStorage.removeItem('wa_token')}catch(e){}location.reload()})">خروج</button></div></div>
 <div class="demo" id="demoBar">✦ نسخة عرض: جرّب التصميم وتنضيف الأرقام والمرفقات وإرسال تجريبي. الإرسال الحقيقي بيشتغل من نسخة السيرفر · <a href="https://github.com/KILLerbood/whatsapp-automation#readme" target="_blank" rel="noopener">طريقة التشغيل</a></div>
 <script>(function(){var b=window.WA_BACKEND,el=document.getElementById('demoBar');if(!b)return;el.textContent='⏳ بيتصل بالسيرفر على جهازك...';
-fetch(b+'/healthz').then(function(r){if(!r.ok)throw 0;el.textContent='✅ متصل بالسيرفر على جهازك (إرسال حقيقي)';el.style.color='#7ff0a8'}).catch(function(){el.textContent='❌ السيرفر مش متصل. شغّل online.bat على جهازك وافتح اللينك اللي بيطلعلك.';el.style.color='#ff9b9b'})})();</script>
+var n=0;function chk(){fetch(b+'/healthz',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;el.textContent='✅ متصل بالسيرفر على جهازك (إرسال حقيقي)';el.style.color='#7ff0a8'}).catch(function(){n++;el.style.color='#ff9b9b';el.textContent='❌ السيرفر مش متصل ('+n+')... بيحاول تاني. لو فضل كده شغّل online.bat وافتح اللينك اللي بيطلعلك.';setTimeout(chk,4000)})}chk()})();</script>
 <div class="stats"><div class="stat gd"><b id="sTotal">0</b><span>إجمالي الأرقام</span></div><div class="stat ok"><b id="sSent">0</b><span>اتبعت</span></div><div class="stat no"><b id="sFail">0</b><span>فشل</span></div><div class="stat"><b id="sLeft">0</b><span>متبقي</span></div></div>
 
 <section id="conn"><h2>1. ربط واتساب</h2>
