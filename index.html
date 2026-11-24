@@ -93,7 +93,7 @@ button:hover::before{left:130%}
 tbody tr{animation:fadeUp .4s both}
 .logo{animation:float 4s ease-in-out infinite}@keyframes float{50%{transform:translateY(-5px) rotate(8deg)}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.hero,.stats,section{opacity:1;transform:none}#intro{display:none}}
-</style></head><body><div id="intro"><div class="ring"></div><div class="core">✦</div><div class="tx">منصة الإرسال الذكي</div></div><canvas id="bg3d"></canvas><main>
+.rec{display:block;font-size:12px;line-height:1.6;color:#7fd8a6;margin-top:4px}.rec.recw{color:#e9c46a}</style></head><body><div id="intro"><div class="ring"></div><div class="core">✦</div><div class="tx">منصة الإرسال الذكي</div></div><canvas id="bg3d"></canvas><main>
 <div class="hero"><div class="brand"><div class="logo">✦</div><div><h1>منصة الإرسال الذكي</h1><p>رسايل واتساب لعملاءك، بهدوء وأمان</p></div></div><div style="display:flex;gap:8px;align-items:center"><span id="mode" class="badge">...</span><button class="s" id="logoutBtn" style="display:none;padding:6px 14px" onclick="fetch('/api/logout',{method:'POST'}).then(()=>location.href='/login')">خروج</button></div></div>
 <div class="stats"><div class="stat gd"><b id="sTotal">0</b><span>إجمالي الأرقام</span></div><div class="stat ok"><b id="sSent">0</b><span>اتبعت</span></div><div class="stat no"><b id="sFail">0</b><span>فشل</span></div><div class="stat"><b id="sLeft">0</b><span>متبقي</span></div></div>
 
@@ -135,11 +135,11 @@ tbody tr{animation:fadeUp .4s both}
 <section><h2>4. إعدادات الأمان</h2>
 <div id="safeL"><div class="row">
 <label class="m">حجم الدفعة<input id="lbatch" type="number" value="5"></label>
-<label class="m">بين كل رسالة: من (ثانية)<input id="mind" type="number" value="8"></label>
-<label class="m">إلى (ثانية)<input id="maxd" type="number" value="20"></label></div><div class="row" style="margin-top:8px">
-<label class="m">استراحة بين الدفعات: من (دقيقة)<input id="pmin" type="number" value="2"></label>
-<label class="m">إلى (دقيقة)<input id="pmax" type="number" value="4"></label>
-<label class="m">حد أقصى في اليوم<input id="cap" type="number" value="100"></label></div>
+<label class="m">بين كل رسالة: من (ثانية)<input id="mind" type="number" value="10"></label>
+<label class="m">إلى (ثانية)<input id="maxd" type="number" value="30"></label></div><div class="row" style="margin-top:8px">
+<label class="m">استراحة بين الدفعات: من (دقيقة)<input id="pmin" type="number" value="3"></label>
+<label class="m">إلى (دقيقة)<input id="pmax" type="number" value="5"></label>
+<label class="m">حد أقصى في اليوم<input id="cap" type="number" value="50"></label></div>
 <div class="row" style="margin-top:8px"><label class="m">سطر الإلغاء (بيتضاف آخر كل رسالة، سيبه فاضي لو مش عايزه)<input id="optout" value="لو مش حابب توصلك رسايل رد بكلمة إلغاء"></label>
 <label class="m">للتجربة: ابعت لأول كام رقم بس (0 = الكل)<input id="limit" type="number" value="3"></label></div>
 <p class="m" id="usage"></p></div>
@@ -153,8 +153,8 @@ tbody tr{animation:fadeUp .4s both}
 <div id="gopts" style="margin-top:10px;display:grid;gap:12px">
 <div><label><input type="checkbox" id="gFail"> <b>1. وقف تلقائي لو الفشل زاد</b></label>
 <div class="row" style="margin-top:6px"><label class="m">لو فشل كذا رسالة ورا بعض<input id="gFailN" type="number" min="1" value="5"></label><label class="m">أو لو نسبة الفشل (آخر 20 رسالة) وصلت %<input id="gRateP" type="number" min="5" max="100" value="30"></label></div></div>
-<div><label><input type="checkbox" id="gDisc"> <b>2. وقف لو واتساب اتفصل أثناء الإرسال</b></label><p class="m">لو الجلسة اتفصلت أو اتعمل لها تسجيل خروج، الإرسال يقف فوراً.</p></div>
-<div><label><input type="checkbox" id="gTimer"> <b>3. مدة إرسال محددة</b></label>
+<div><label><input type="checkbox" id="gDisc"> <b>2. وقف لو واتساب اتفصل أثناء الإرسال</b></label><p class="m">لو الجلسة اتفصلت أو اتعمل لها تسجيل خروج، الإرسال يقف فوراً.</p><span class="rec">✅ الموصى به: شغّله دايماً.</span></div>
+<div><label><input type="checkbox" id="gTimer"> <b>3. مدة إرسال محددة</b></label><span class="rec">✅ الموصى به: شغّل "وقت إرسال يومي"، وخلي المدة من ساعة لـ 3 ساعات في الجلسة.</span>
 <div class="row" style="margin-top:6px"><label class="m">يقف بعد (دقيقة)<input id="gTimerM" type="number" min="1" value="120"></label></div>
 <label style="display:block;margin-top:8px"><input type="checkbox" id="gWin"> وقت إرسال يومي محدد (بتوقيت جهازك)</label>
 <div class="row" style="margin-top:6px"><label class="m">من الساعة<input id="gWinF" type="number" min="0" max="23" value="9"></label><label class="m">إلى الساعة<input id="gWinT" type="number" min="1" max="24" value="21"></label></div>
@@ -165,7 +165,7 @@ tbody tr{animation:fadeUp .4s both}
 <div class="row" style="margin-top:6px"><label class="m">يبدأ بكام رسالة في اليوم<input id="gWarmS" type="number" min="1" value="20"></label><label class="m">يزيد كام كل يوم<input id="gWarmI" type="number" min="0" value="15"></label></div>
 <p class="m">الحد اليومي الفعلي هو الأصغر بين ده وبين "حد أقصى في اليوم" فوق. بيبدأ العد من لما تربط الرقم.</p></div>
 <div><label><input type="checkbox" id="gSpin"> <b>6. تنويع الرسالة</b></label>
-<p class="m">اكتب في رسالتك كلمات بديلة بين أقواس وبخط عمودي، مثلاً <span dir="ltr">{أهلا|مرحبا|السلام عليكم} {name}</span> وكل عميل هياخد صيغة مختلفة.</p></div>
+<p class="m">اكتب في رسالتك كلمات بديلة بين أقواس وبخط عمودي، مثلاً <span dir="ltr">{أهلا|مرحبا|السلام عليكم} {name}</span> وكل عميل هياخد صيغة مختلفة.</p><span class="rec">✅ الموصى به: 2 – 3 صيغ بديلة كحد أقصى في كل قوس، ومن 2 لـ 3 أقواس في الرسالة كلها.</span></div>
 </div>
 <div style="margin-top:14px"><b>نصايح عشان تحمي رقمك أكتر:</b>
 <ol class="m" style="line-height:1.9;padding-inline-start:20px;margin:6px 0 0">
@@ -294,4 +294,11 @@ for(const p of Q){const z=(1-p[2])/2,s=.6+z*1.8;x.fillStyle=z>.55?`rgba(185,245,
 const g=x.createRadialGradient(cx,cy,0,cx,cy,R*1.4);g.addColorStop(0,'rgba(37,211,102,.08)');g.addColorStop(1,'rgba(37,211,102,0)');x.fillStyle=g;x.fillRect(0,0,W,H);
 for(const s of S){s[1]-=.0006*(s[2]+.3);if(s[1]<-1)s[1]=1;x.fillStyle=`rgba(233,196,106,${.15+s[2]*.45})`;x.beginPath();x.arc((s[0]*.5+.5)*W+mx*20*s[2],(s[1]*.5+.5)*H+my*20*s[2],.6+s[2]*1.4,0,7);x.fill()}
 requestAnimationFrame(fr)}fr()})();
+</script><script>
+(()=>{const R={lbatch:[3,8,'3 – 8 رسايل في الدفعة'],mind:[10,25,'10 – 25 ثانية'],maxd:[25,45,'25 – 45 ثانية'],pmin:[3,5,'3 – 5 دقايق'],pmax:[5,10,'5 – 10 دقايق'],
+cap:[20,150,'20 – 50 في اليوم لرقم جديد، ولحد 150 لرقم قديم'],limit:[2,3,'2 – 3 أرقام للتجربة (أرقامك أنت)'],
+gFailN:[3,5,'3 – 5 رسايل'],gRateP:[20,30,'20% – 30%'],gTimerM:[60,180,'60 – 180 دقيقة'],gWinF:[8,10,'من الساعة 8 لـ 10 صباحاً'],gWinT:[19,21,'إلى الساعة 19 لـ 21 (7 لـ 9 مساءً)'],
+gHourN:[20,40,'20 – 40 رسالة في الساعة'],gWarmS:[15,25,'15 – 25 رسالة في اليوم'],gWarmI:[10,20,'زيادة 10 – 20 رسالة كل يوم']};
+for(const id in R){const el=document.getElementById(id);if(!el)continue;const [lo,hi,t]=R[id],box=el.closest('label')||el.parentNode,h=document.createElement('small');h.className='rec';h.textContent='✅ الموصى به: '+t;box.appendChild(h);
+const chk=()=>{const v=+el.value,out=el.value!==''&&(v<lo||v>hi);h.classList.toggle('recw',out);h.textContent=(out?'⚠️ برّه النطاق الموصى به. ':'')+'✅ الموصى به: '+t};el.addEventListener('input',chk);chk()}})();
 </script></main></body></html>
