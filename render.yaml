@@ -2,14 +2,18 @@ services:
   - type: web
     name: whatsapp-automation
     runtime: node
-    plan: free               # free: no disk; WhatsApp link is lost on restart/redeploy (re-link when needed)
+    plan: starter
     buildCommand: npm install --omit=dev
     startCommand: node server.js
     healthCheckPath: /healthz
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
     envVars:
-      - key: APP_PASSWORD     # login password for the site (8+ chars) - you type it in Render
+      - key: APP_PASSWORD
         sync: false
       - key: DATA_DIR
-        value: /tmp/data
+        value: /data
       - key: NODE_VERSION
         value: "22"
