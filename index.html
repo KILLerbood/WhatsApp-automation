@@ -146,7 +146,41 @@ tbody tr{animation:fadeUp .4s both}
 <div id="safeA" style="display:none"><div class="row">
 <label class="m">حجم الدفعة<input id="batch" type="number" value="50"></label>
 <label class="m">استراحة بين الدفعات (ثانية)<input id="pause" type="number" value="60"></label>
-<label class="m">فاصل بين كل رسالة (مللي ثانية)<input id="delay" type="number" value="1000"></label></div></div></section>
+<label class="m">فاصل بين كل رسالة (مللي ثانية)<input id="delay" type="number" value="1000"></label></div></div>
+<details id="guard" style="margin-top:14px"><summary>🛡️ حماية أكتر للرقم (اختياري) — دوس هنا عشان تفتح كل خيارات الأمان</summary>
+<p class="m" style="margin:10px 0">الخيارات دي شغالة مع الربط بالكود بس. فعّل اللي يناسبك، أو دوس "الإعدادات الموصى بها" وبعدين عدّل زي ما تحب. مفيش حاجة بتضمن 100% إن الرقم ما يتقيّدش، لكن دي بتقلل الخطر.</p>
+<div class="row"><button type="button" class="s" onclick="guardPreset()">✅ فعّل الإعدادات الموصى بها</button><button type="button" class="s" onclick="guardClear()">إلغاء الكل</button></div>
+<div id="gopts" style="margin-top:10px;display:grid;gap:12px">
+<div><label><input type="checkbox" id="gFail"> <b>1. وقف تلقائي لو الفشل زاد</b></label>
+<div class="row" style="margin-top:6px"><label class="m">لو فشل كذا رسالة ورا بعض<input id="gFailN" type="number" min="1" value="5"></label><label class="m">أو لو نسبة الفشل (آخر 20 رسالة) وصلت %<input id="gRateP" type="number" min="5" max="100" value="30"></label></div></div>
+<div><label><input type="checkbox" id="gDisc"> <b>2. وقف لو واتساب اتفصل أثناء الإرسال</b></label><p class="m">لو الجلسة اتفصلت أو اتعمل لها تسجيل خروج، الإرسال يقف فوراً.</p></div>
+<div><label><input type="checkbox" id="gTimer"> <b>3. مدة إرسال محددة</b></label>
+<div class="row" style="margin-top:6px"><label class="m">يقف بعد (دقيقة)<input id="gTimerM" type="number" min="1" value="120"></label></div>
+<label style="display:block;margin-top:8px"><input type="checkbox" id="gWin"> وقت إرسال يومي محدد (بتوقيت جهازك)</label>
+<div class="row" style="margin-top:6px"><label class="m">من الساعة<input id="gWinF" type="number" min="0" max="23" value="9"></label><label class="m">إلى الساعة<input id="gWinT" type="number" min="1" max="24" value="21"></label></div>
+<p class="m">خارج الوقت ده الإرسال بيستنى لوحده ويكمل لما الوقت يجي.</p></div>
+<div><label><input type="checkbox" id="gHour"> <b>4. حد أقصى في الساعة</b></label>
+<div class="row" style="margin-top:6px"><label class="m">أقصى رسايل في الساعة<input id="gHourN" type="number" min="1" value="30"></label></div></div>
+<div><label><input type="checkbox" id="gWarm"> <b>5. تسخين تدريجي للرقم الجديد</b></label>
+<div class="row" style="margin-top:6px"><label class="m">يبدأ بكام رسالة في اليوم<input id="gWarmS" type="number" min="1" value="20"></label><label class="m">يزيد كام كل يوم<input id="gWarmI" type="number" min="0" value="15"></label></div>
+<p class="m">الحد اليومي الفعلي هو الأصغر بين ده وبين "حد أقصى في اليوم" فوق. بيبدأ العد من لما تربط الرقم.</p></div>
+<div><label><input type="checkbox" id="gSpin"> <b>6. تنويع الرسالة</b></label>
+<p class="m">اكتب في رسالتك كلمات بديلة بين أقواس وبخط عمودي، مثلاً <span dir="ltr">{أهلا|مرحبا|السلام عليكم} {name}</span> وكل عميل هياخد صيغة مختلفة.</p></div>
+</div>
+<div style="margin-top:14px"><b>نصايح عشان تحمي رقمك أكتر:</b>
+<ol class="m" style="line-height:1.9;padding-inline-start:20px;margin:6px 0 0">
+<li>ابعت بس لناس وافقت تستلم منك، أو عملاء حاليين. أكبر سبب للحظر إن الناس تبلّغ إن الرسالة سبام.</li>
+<li>رقم جديد؟ ابدأ بحوالي 20 رسالة في اليوم وزوّد بالتدريج على أيام.</li>
+<li>ما تبعتش نفس النص بالظبط للكل. استخدم {name} والكلمات البديلة.</li>
+<li>سيب سطر الإلغاء، ولو حد كتب "إلغاء" شيله من القايمة فوراً.</li>
+<li>قلل اللينكات، وما تستخدمش لينكات مختصرة مشبوهة.</li>
+<li>ابعت في ساعات النهار وساعات الشغل، مش بالليل.</li>
+<li>لو مفيش ردود وناس كتير بتتجاهل، وقف وراجع الرسالة بدل ما تكمل.</li>
+<li>استخدم رقم قديم وله محادثات حقيقية، مش شريحة جديدة خالص.</li>
+<li>ما تبعتش لأرقام مشتراة أو مجمّعة من النت.</li>
+<li>لو الرقم اتقيّد، استنى ولا تفصل وتربط تاني وتبعت على طول.</li>
+<li>جرّب دايماً على رقمين أو تلاتة بتوعك قبل أي دفعة كبيرة.</li></ol></div>
+</details></section>
 
 <section><h2>5. الإرسال</h2><div class="row"><button id="go" onclick="go()" disabled>ابدأ الإرسال</button><button class="d" onclick="fetch('/api/stop',{method:'POST'})">إيقاف</button><button class="s" onclick="csv()">تحميل النتيجة CSV</button></div>
 <p id="note" class="m"></p><bar><i id="pb"></i></bar><p id="stat" class="m"></p>
@@ -200,11 +234,23 @@ async function parseNums(){const r=await (await fetch('/api/parse',{method:'POST
 $('sum').textContent=`جاهز: ${r.ok.length} رقم · مكرر اتشال: ${r.dup} · غير صالح: ${r.bad.length}`+(r.bad.length?' ('+r.bad.slice(0,5).join(' | ')+')':'');
 $('go').disabled=!rows.length;render(rows.map(x=>({...x,status:'queued',info:''})))}
 function render(l){setStats(l);$('tb').innerHTML=l.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td><td dir="ltr">+${r.number}</td><td class="${r.status}">${{queued:'في الانتظار',sending:'جاري...',sent:'اتبعت',failed:'فشل',stopped:'اتوقف'}[r.status]}</td><td class="m">${esc(r.info||'')}</td></tr>`).join('')}
+const $c=i=>$(i).checked;
+function guardPayload(){const g={tz:-new Date().getTimezoneOffset()};
+if($c('gFail')){g.failStreak=+$('gFailN').value;g.failRate=+$('gRateP').value}
+if($c('gDisc'))g.disc=true;
+if($c('gTimer'))g.timerMin=+$('gTimerM').value;
+if($c('gWin'))g.win={from:+$('gWinF').value,to:+$('gWinT').value};
+if($c('gHour'))g.hourCap=+$('gHourN').value;
+if($c('gWarm'))g.warm={start:+$('gWarmS').value,step:+$('gWarmI').value};
+if($c('gSpin'))g.spin=true;return g}
+function guardSet(on){['gFail','gDisc','gWin','gHour','gWarm','gSpin'].forEach(i=>$(i).checked=on);$('gTimer').checked=false}
+function guardPreset(){guardSet(true)}
+function guardClear(){guardSet(false)}
 async function go(){const L=chan()=='linked';const t=L?'':$('tname').value.trim();if(!t&&!$('text').value.trim()&&!atts.length&&!blks.length)return alert('اكتب الرسالة أو ضيف ملف');
 if(blks.length&&!L)return alert('الأجزاء المرتبة شغالة مع الربط بالكود بس');
 if(blks.some(b=>b.kind=='media'&&!b.file))return alert('في جزء ميديا من غير ملف');
 const n=L&&+$('limit').value>0?Math.min(+$('limit').value,rows.length):rows.length;if(!confirm(`هتبعت لـ ${n} رقم. متأكد؟`))return;
-const r=await fetch('/api/send',{method:'POST',body:JSON.stringify({blocks:L?blkPayload():[],atts:t?[]:atts,channel:chan(),limit:L?$('limit').value:0,minDelay:$('mind').value,maxDelay:$('maxd').value,pauseMin:$('pmin').value,pauseMax:$('pmax').value,dailyCap:$('cap').value,optout:$('optout').value,rows,mode:t?'template':'text',template:t,lang:$('lang').value,useName:false,text:$('text').value,batch:L?$('lbatch').value:$('batch').value,pause:$('pause').value,delay:$('delay').value})});
+const r=await fetch('/api/send',{method:'POST',body:JSON.stringify({blocks:L?blkPayload():[],atts:t?[]:atts,channel:chan(),limit:L?$('limit').value:0,minDelay:$('mind').value,maxDelay:$('maxd').value,pauseMin:$('pmin').value,pauseMax:$('pmax').value,dailyCap:$('cap').value,optout:$('optout').value,rows,guard:L?guardPayload():{},mode:t?'template':'text',template:t,lang:$('lang').value,useName:false,text:$('text').value,batch:L?$('lbatch').value:$('batch').value,pause:$('pause').value,delay:$('delay').value})});
 const j=await r.json();if(!r.ok)return alert(j.error);poll=setInterval(tick,800)}
 async function tick(){const j=await (await fetch('/api/job')).json();last=j.rows;render(j.rows);$('note').textContent=j.note||'';
 const d=j.rows.filter(r=>r.status=='sent'||r.status=='failed').length;$('pb').style.width=(d/Math.max(1,j.rows.length)*100)+'%';

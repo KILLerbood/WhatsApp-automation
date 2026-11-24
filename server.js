@@ -225,19 +225,50 @@ function aiLocal(text, seed = 0) {
 }
 async function aiImprove(text, seed = 0) { text = cleanWA(text); aiWhy = ''; const c = await aiClaude(text, seed); if (c) return { text: c, mode: 'claude' }; const cWhy = aiWhy; const r = await aiRemote(text, seed); if (!r) aiWhy = (cWhy ? cWhy + ' | ' : '') + aiWhy; if (!r) console.log('improve: fallback (' + aiWhy + ')'); return r ? { text: r, mode: 'ai' } : { text: aiLocal(text, seed), mode: 'offline', why: aiWhy }; }
 const rnd = (a, b) => (a + Math.random() * (b - a)) * 1000;
+// {a|b|c} -> one random option (so messages are not identical). {name} has no "|" so it is untouched.
+const spin = t => String(t || '').replace(/\{([^{}|]+(?:\|[^{}|]+)+)\}/g, (_, g) => { const a = g.split('|'); return a[Math.floor(Math.random() * a.length)]; });
+// extra protection settings chosen by the user (all optional)
+function cleanGuard(g) {
+  g = g && typeof g === 'object' ? g : {}; const n = (v, lo, hi) => { v = Math.floor(+v); return v >= lo && v <= hi ? v : 0; };
+  const w = g.win && typeof g.win === 'object' ? { from: n(g.win.from, 0, 23), to: n(g.win.to, 1, 24) } : null;
+  return { failStreak: n(g.failStreak, 1, 100), failRate: n(g.failRate, 5, 100), disc: !!g.disc, timerMin: n(g.timerMin, 1, 1440),
+    win: w && w.to !== w.from ? w : null, hourCap: n(g.hourCap, 1, 1000),
+    warm: g.warm && typeof g.warm === 'object' && n(g.warm.start, 1, 1000) ? { start: n(g.warm.start, 1, 1000), step: n(g.warm.step, 0, 1000) } : null,
+    spin: !!g.spin, tz: Math.max(-840, Math.min(840, Math.floor(+g.tz) || 0)) };
+}
 async function run(j, o) {
   let sinceBatch = 0;
+  const G = o.guard || {}, t0 = Date.now(), recent = []; let streak = 0;
+  const hourNow = () => new Date(Date.now() + (G.tz || 0) * 60000).getUTCHours();
+  const inWin = () => { if (!G.win) return true; const h = hourNow(), { from, to } = G.win; return from < to ? (h >= from && h < to) : (h >= from || h < to); };
+  const timeUp = () => G.timerMin && Date.now() - t0 > G.timerMin * 60e3;
+  const halt = why => { j.note = '🛡️ ' + why; j.guard = why; j.stop = true; };
   for (let i = 0; i < j.rows.length && !j.stop; i++) {
     const r = j.rows[i];
     if (o.channel === 'linked') {
-      if (linked.used() >= o.dailyCap) { j.note = 'وصلت للحد اليومي (' + o.dailyCap + ')، اتوقف الإرسال لبكرة'; break; }
+      // --- protection checks before every message ---
+      if (timeUp()) { halt('انتهت المدة اللي حددتها (' + G.timerMin + ' دقيقة)، الإرسال اتوقف'); break; }
+      if (G.disc && linked.status().state !== 'connected') { halt('واتساب اتفصل أثناء الإرسال، الإرسال اتوقف حماية للرقم'); break; }
+      while (!inWin() && !j.stop) { j.note = '🛡️ خارج وقت الإرسال (' + G.win.from + ':00 - ' + G.win.to + ':00)، مستني...'; await sleep(30000); if (timeUp()) break; }
+      if (j.stop) break; if (timeUp()) { halt('انتهت المدة اللي حددتها (' + G.timerMin + ' دقيقة)، الإرسال اتوقف'); break; }
+      while (G.hourCap && linked.hourUsed() >= G.hourCap && !j.stop) { j.note = '🛡️ وصلت للحد في الساعة (' + G.hourCap + ')، مستني شوية...'; await sleep(30000); if (timeUp()) break; }
+      if (j.stop) break; if (timeUp()) { halt('انتهت المدة اللي حددتها (' + G.timerMin + ' دقيقة)، الإرسال اتوقف'); break; }
+      j.note = '';
+      const cap = G.warm ? Math.min(o.dailyCap, linked.warmCap(G.warm.start, G.warm.step)) : o.dailyCap;
+      if (linked.used() >= cap) { j.note = (G.warm && cap < o.dailyCap ? 'وصلت لحد التسخين اليوم (' + cap + ')' : 'وصلت للحد اليومي (' + cap + ')') + '، اتوقف الإرسال لبكرة'; break; }
       if (sinceBatch >= o.batch) { j.note = 'استراحة بين الدفعات...'; await sleep(rnd(o.pauseMin * 60, o.pauseMax * 60)); j.note = ''; sinceBatch = 0; if (j.stop) break; }
       r.status = 'sending';
+      let ok = false, counted = true;
       try {
-        if (!(await linked.check(r.number))) { r.status = 'failed'; r.info = 'الرقم مش على واتساب'; continue; }
-        const txt = o.text.replace(/\{name\}/g, r.name || '') + (o.optout ? '\n\n' + o.optout : '');
-        r.info = (o.blocks.length ? await linked.sendBlocks(r.number, o.blocks.map(b => ({ ...b, text: (b.text || '').replace(/\{name\}/g, r.name || '') })), o.optout) : await linked.sendText(r.number, txt, o.atts)) || ''; r.status = 'sent'; linked.bump(); sinceBatch++;
+        if (!(await linked.check(r.number))) { r.status = 'failed'; r.info = 'الرقم مش على واتساب'; continue; } // normal, not a ban signal
+        const S = t => G.spin ? spin(t) : t;
+        const nm = t => S((t || '').replace(/\{name\}/g, r.name || ''));
+        const txt = nm(o.text) + (o.optout ? '\n\n' + o.optout : '');
+        r.info = (o.blocks.length ? await linked.sendBlocks(r.number, o.blocks.map(b => ({ ...b, text: nm(b.text) })), o.optout) : await linked.sendText(r.number, txt, o.atts)) || ''; r.status = 'sent'; ok = true; linked.bump(); sinceBatch++;
       } catch (e) { r.status = 'failed'; r.info = e.message; }
+      if (counted) { recent.push(ok); if (recent.length > 20) recent.shift(); streak = ok ? 0 : streak + 1; }
+      if (!ok && G.failStreak && streak >= G.failStreak) { halt(streak + ' رسايل فشلوا ورا بعض، الإرسال اتوقف حماية للرقم. راجع الربط والرسالة قبل ما تكمل'); break; }
+      if (!ok && G.failRate && recent.length >= 10) { const f = recent.filter(x => !x).length * 100 / recent.length; if (f >= G.failRate) { halt('نسبة الفشل وصلت ' + Math.round(f) + '%، الإرسال اتوقف حماية للرقم'); break; } }
       if (i < j.rows.length - 1 && !j.stop) await sleep(rnd(o.minDelay, o.maxDelay));
       continue;
     }
@@ -322,7 +353,7 @@ http.createServer(async (req, res) => {
     if (blocks.length && b.channel !== 'linked') return json(res, { error: 'الأجزاء المرتبة شغالة مع الربط بالكود بس' }, 400);
     if (b.mode === 'template' ? !b.template : !(b.text || atts.length || blocks.length)) return json(res, { error: 'اكتب الرسالة أو اسم القالب' }, 400);
     job = { rows: b.rows.slice(0, +b.limit > 0 ? +b.limit : 1000).map(r => ({ number: r.number, name: r.name || '', status: 'queued', info: '' })), done: false, stop: false, live: b.channel === 'linked' || isLive(), note: '' };
-    run(job, { blocks, channel: b.channel, minDelay: Math.max(3, +b.minDelay || 8), maxDelay: Math.max(+b.minDelay || 8, +b.maxDelay || 20), pauseMin: +b.pauseMin || 2, pauseMax: Math.max(+b.pauseMin || 2, +b.pauseMax || 4), dailyCap: +b.dailyCap || 100, optout: String(b.optout || '').slice(0, 200), atts, mode: b.mode, template: b.template, lang: b.lang, text: String(b.text || ''), useName: !!b.useName, batch: Math.max(1, +b.batch || 50), pause: Math.max(0, +b.pause || 60), delay: Math.max(0, +b.delay || 1000) });
+    run(job, { blocks, channel: b.channel, minDelay: Math.max(3, +b.minDelay || 8), maxDelay: Math.max(+b.minDelay || 8, +b.maxDelay || 20), pauseMin: +b.pauseMin || 2, pauseMax: Math.max(+b.pauseMin || 2, +b.pauseMax || 4), dailyCap: +b.dailyCap || 100, optout: String(b.optout || '').slice(0, 200), guard: cleanGuard(b.guard), atts, mode: b.mode, template: b.template, lang: b.lang, text: String(b.text || ''), useName: !!b.useName, batch: Math.max(1, +b.batch || 50), pause: Math.max(0, +b.pause || 60), delay: Math.max(0, +b.delay || 1000) });
     return json(res, { ok: true });
   }
   if (req.url === '/api/ai/improve' && req.method === 'POST') {

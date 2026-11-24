@@ -39,7 +39,7 @@ async function start(phone) {
         try { await new Promise(r => setTimeout(r, 1500)); const c = await sock.requestPairingCode(phone); L.code = fmt(c); L.state = 'pairing'; log('code ' + L.code); }
         catch (e) { L.error = 'تعذر إنشاء الكود: ' + e.message; log('code error ' + e.message); asked = false; }
       }
-      if (u.connection === 'open') { L.state = 'connected'; L.code = ''; L.error = ''; L.number = (sock.user.id || '').split(':')[0].split('@')[0]; log('open ' + L.number); }
+      if (u.connection === 'open') { if (phone) warmReset(); L.state = 'connected'; L.code = ''; L.error = ''; L.number = (sock.user.id || '').split(':')[0].split('@')[0]; log('open ' + L.number); }
       if (u.connection === 'close') {
         const sc = u.lastDisconnect && u.lastDisconnect.error && u.lastDisconnect.error.output && u.lastDisconnect.error.output.statusCode;
         L.sock = null; L.starting = false;
@@ -101,6 +101,17 @@ async function sendText(number, text, atts = []) {
 // daily cap bookkeeping
 const today = () => new Date().toISOString().slice(0, 10);
 function used() { try { const u = JSON.parse(fs.readFileSync(USAGE, 'utf8')); return u.day === today() ? u.n : 0; } catch { return 0; } }
-function bump() { fs.writeFileSync(USAGE, JSON.stringify({ day: today(), n: used() + 1 })); }
+const sentAt = []; // timestamps (ms) of sends in the last hour, for the hourly cap
+function bump() { fs.writeFileSync(USAGE, JSON.stringify({ day: today(), n: used() + 1 })); sentAt.push(Date.now()); }
+function hourUsed() { const c = Date.now() - 3600e3; while (sentAt.length && sentAt[0] < c) sentAt.shift(); return sentAt.length; }
+// warm-up: a new number starts with a small daily cap that grows every day
+const WARM = path.join(DATA, 'warmup.json');
+function warmCap(start, step) {
+  let w; try { w = JSON.parse(fs.readFileSync(WARM, 'utf8')); } catch {}
+  if (!w || !w.start) { w = { start: today() }; try { fs.writeFileSync(WARM, JSON.stringify(w)); } catch {} }
+  const days = Math.max(0, Math.floor((Date.parse(today()) - Date.parse(w.start)) / 864e5));
+  return Math.max(1, start + days * step);
+}
+function warmReset() { try { fs.rmSync(WARM, { force: true }); } catch {} }
 const status = () => ({ state: L.state, code: L.code, number: L.number, error: L.error, usedToday: used() });
-module.exports = { start, logout, autostart, status, check, sendText, sendBlocks, used, bump };
+module.exports = { start, logout, autostart, status, check, sendText, sendBlocks, used, bump, hourUsed, warmCap, warmReset };
